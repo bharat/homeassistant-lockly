@@ -2,6 +2,8 @@
 
 # ruff: noqa: S101
 
+from typing import Any
+
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 
@@ -17,8 +19,11 @@ from custom_components.lockly.const import (
 )
 
 
-async def test_config_flow_user(hass: HomeAssistant) -> None:
+async def test_config_flow_user(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
     """Test the config flow user step."""
+    _ = enable_custom_integrations
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "user"}
     )

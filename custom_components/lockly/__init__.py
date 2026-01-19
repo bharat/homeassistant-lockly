@@ -55,7 +55,7 @@ SERVICE_SCHEMA_WIPE = vol.Schema(
 ENTRY_NOT_FOUND = "entry_not_found"
 
 
-async def async_setup(hass: HomeAssistant) -> bool:
+async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
     """Set up the Lockly integration."""
     hass.data.setdefault(DOMAIN, {})
 

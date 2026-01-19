@@ -3,8 +3,10 @@
 # ruff: noqa: S101
 
 import json
+from typing import Any
 
 import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
@@ -26,7 +28,10 @@ from custom_components.lockly.const import (
 )
 
 
-async def _setup_entry(hass: HomeAssistant) -> MockConfigEntry:
+async def _setup_entry(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> MockConfigEntry:
+    _ = enable_custom_integrations
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Lockly",
@@ -40,14 +45,16 @@ async def _setup_entry(hass: HomeAssistant) -> MockConfigEntry:
     )
     entry.add_to_hass(hass)
     await async_setup_component(hass, DOMAIN, {})
-    assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
     return entry
 
 
-async def test_apply_slot_publishes_mqtt(hass: HomeAssistant) -> None:
+async def test_apply_slot_publishes_mqtt(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
     """Test applying a slot publishes MQTT commands."""
-    entry = await _setup_entry(hass)
+    entry = await _setup_entry(hass, enable_custom_integrations)
     mqtt_calls = async_mock_service(hass, "mqtt", "publish")
 
     await hass.services.async_call(
@@ -66,9 +73,11 @@ async def test_apply_slot_publishes_mqtt(hass: HomeAssistant) -> None:
     assert payload["payload"]["pincodevalue"] == "1234"
 
 
-async def test_apply_slot_rejects_invalid_pin(hass: HomeAssistant) -> None:
+async def test_apply_slot_rejects_invalid_pin(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
     """Test applying invalid PIN raises."""
-    entry = await _setup_entry(hass)
+    entry = await _setup_entry(hass, enable_custom_integrations)
     await hass.services.async_call(
         DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
     )
