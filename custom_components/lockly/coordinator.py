@@ -1,32 +1,68 @@
-"""DataUpdateCoordinator for integration_blueprint."""
+"""Slot coordinator for Lockly."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
 
-from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-
-from .api import (
-    LocklyApiClientAuthenticationError,
-    LocklyApiClientError,
-)
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 if TYPE_CHECKING:
+    from logging import Logger
+
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.storage import Store
+
     from .data import LocklyConfigEntry
 
 
-# https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
-class LocklyDataUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching data from the API."""
+@dataclass
+class LocklySlot:
+    """Lockly slot data."""
+
+    slot: int
+    name: str = ""
+    pin: str = ""
+    enabled: bool = False
+    busy: bool = False
+
+
+class LocklySlotCoordinator(DataUpdateCoordinator[dict[int, LocklySlot]]):
+    """Coordinator for Lockly slot state."""
 
     config_entry: LocklyConfigEntry
 
-    async def _async_update_data(self) -> Any:
-        """Update data via library."""
-        try:
-            return await self.config_entry.runtime_data.client.async_get_data()
-        except LocklyApiClientAuthenticationError as exception:
-            raise ConfigEntryAuthFailed(exception) from exception
-        except LocklyApiClientError as exception:
-            raise UpdateFailed(exception) from exception
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        store: Store,
+        entry: LocklyConfigEntry,
+        logger: Logger,
+    ) -> None:
+        """Initialize the coordinator."""
+        super().__init__(
+            hass=hass,
+            logger=logger,
+            name=entry.title,
+            update_interval=None,
+        )
+        self._store = store
+        self.config_entry = entry
+        self.data = {}
+
+    async def async_load(self) -> None:
+        """Load slot state from storage."""
+        stored = await self._store.async_load() or []
+        self.data = {}
+        for item in stored:
+            if "slot" not in item:
+                continue
+            slot_id = int(item["slot"])
+            slot = LocklySlot(**{**item, "slot": slot_id})
+            self.data[slot_id] = slot
+        self.async_set_updated_data(self.data)
+
+    async def async_save(self) -> None:
+        """Persist slot state to storage."""
+        payload = [asdict(slot) for slot in self.data.values()]
+        await self._store.async_save(payload)

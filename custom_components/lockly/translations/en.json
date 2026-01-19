@@ -2,20 +2,29 @@
     "config": {
         "step": {
             "user": {
-                "description": "If you need help with the configuration have a look here: https://github.com/bharat/homeassistant-lockly",
+                "title": "Lockly",
+                "description": "Configure the Lockly slot manager for Zigbee2MQTT locks.",
                 "data": {
-                    "username": "Username",
-                    "password": "Password"
+                    "name": "Name",
+                    "lock_names": "Lock friendly names (comma-separated)",
+                    "max_slots": "Maximum slots",
+                    "mqtt_topic": "Zigbee2MQTT base topic",
+                    "endpoint": "Zigbee endpoint"
                 }
             }
-        },
-        "error": {
-            "auth": "Username/Password is wrong.",
-            "connection": "Unable to connect to the server.",
-            "unknown": "Unknown error occurred."
-        },
-        "abort": {
-            "already_configured": "This entry is already configured."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Lockly Options",
+                "data": {
+                    "lock_names": "Lock friendly names (comma-separated)",
+                    "max_slots": "Maximum slots",
+                    "mqtt_topic": "Zigbee2MQTT base topic",
+                    "endpoint": "Zigbee endpoint"
+                }
+            }
         }
     }
 }

@@ -1,21 +1,29 @@
-"""Adds config flow for Lockly."""
+"""Config flow for Lockly."""
 
 from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_NAME
+from homeassistant.core import callback
 from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from slugify import slugify
 
-from .api import (
-    LocklyApiClient,
-    LocklyApiClientAuthenticationError,
-    LocklyApiClientCommunicationError,
-    LocklyApiClientError,
+from .const import (
+    CONF_ENDPOINT,
+    CONF_LOCK_NAMES,
+    CONF_MAX_SLOTS,
+    CONF_MQTT_TOPIC,
+    DEFAULT_ENDPOINT,
+    DEFAULT_LOCK_NAMES,
+    DEFAULT_MAX_SLOTS,
+    DEFAULT_MQTT_TOPIC,
+    DOMAIN,
 )
-from .const import DOMAIN, LOGGER
+
+
+def _parse_lock_names(value: str) -> list[str]:
+    """Parse a comma-separated lock list into an array."""
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 class LocklyFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -28,62 +36,121 @@ class LocklyFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         user_input: dict | None = None,
     ) -> config_entries.ConfigFlowResult:
         """Handle a flow initialized by the user."""
-        _errors = {}
         if user_input is not None:
-            try:
-                await self._test_credentials(
-                    username=user_input[CONF_USERNAME],
-                    password=user_input[CONF_PASSWORD],
-                )
-            except LocklyApiClientAuthenticationError as exception:
-                LOGGER.warning(exception)
-                _errors["base"] = "auth"
-            except LocklyApiClientCommunicationError as exception:
-                LOGGER.error(exception)
-                _errors["base"] = "connection"
-            except LocklyApiClientError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
-            else:
-                await self.async_set_unique_id(
-                    ## Do NOT use this in production code
-                    ## The unique_id should never be something that can change
-                    ## https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                    unique_id=slugify(user_input[CONF_USERNAME])
-                )
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=user_input[CONF_USERNAME],
-                    data=user_input,
-                )
+            lock_names = _parse_lock_names(user_input[CONF_LOCK_NAMES])
+            data = {
+                CONF_NAME: user_input[CONF_NAME],
+                CONF_LOCK_NAMES: lock_names,
+                CONF_MAX_SLOTS: user_input[CONF_MAX_SLOTS],
+                CONF_MQTT_TOPIC: user_input[CONF_MQTT_TOPIC],
+                CONF_ENDPOINT: user_input[CONF_ENDPOINT],
+            }
+            return self.async_create_entry(title=user_input[CONF_NAME], data=data)
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_USERNAME,
-                        default=(user_input or {}).get(CONF_USERNAME, vol.UNDEFINED),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
+                    vol.Required(CONF_NAME, default="Lockly"): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
                     ),
-                    vol.Required(CONF_PASSWORD): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.PASSWORD,
-                        ),
+                    vol.Required(
+                        CONF_LOCK_NAMES,
+                        default=", ".join(DEFAULT_LOCK_NAMES),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                    ),
+                    vol.Required(
+                        CONF_MAX_SLOTS,
+                        default=DEFAULT_MAX_SLOTS,
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=100, mode=selector.NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Required(
+                        CONF_MQTT_TOPIC,
+                        default=DEFAULT_MQTT_TOPIC,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                    ),
+                    vol.Required(
+                        CONF_ENDPOINT,
+                        default=DEFAULT_ENDPOINT,
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=255, mode=selector.NumberSelectorMode.BOX
+                        )
                     ),
                 },
             ),
-            errors=_errors,
         )
 
-    async def _test_credentials(self, username: str, password: str) -> None:
-        """Validate credentials."""
-        client = LocklyApiClient(
-            username=username,
-            password=password,
-            session=async_create_clientsession(self.hass),
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Return the options flow handler."""
+        return LocklyOptionsFlowHandler(config_entry)
+
+
+class LocklyOptionsFlowHandler(config_entries.OptionsFlow):
+    """Options flow for Lockly."""
+
+    def __init__(self, entry: config_entries.ConfigEntry) -> None:
+        """Initialize Lockly options flow."""
+        self._entry = entry
+
+    async def async_step_init(
+        self, user_input: dict | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            lock_names = _parse_lock_names(user_input[CONF_LOCK_NAMES])
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_LOCK_NAMES: lock_names,
+                    CONF_MAX_SLOTS: user_input[CONF_MAX_SLOTS],
+                    CONF_MQTT_TOPIC: user_input[CONF_MQTT_TOPIC],
+                    CONF_ENDPOINT: user_input[CONF_ENDPOINT],
+                },
+            )
+
+        current = self._entry.options or self._entry.data
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LOCK_NAMES,
+                        default=", ".join(current.get(CONF_LOCK_NAMES, [])),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                    ),
+                    vol.Required(
+                        CONF_MAX_SLOTS,
+                        default=current.get(CONF_MAX_SLOTS, DEFAULT_MAX_SLOTS),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=100, mode=selector.NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Required(
+                        CONF_MQTT_TOPIC,
+                        default=current.get(CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                    ),
+                    vol.Required(
+                        CONF_ENDPOINT,
+                        default=current.get(CONF_ENDPOINT, DEFAULT_ENDPOINT),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=255, mode=selector.NumberSelectorMode.BOX
+                        )
+                    ),
+                },
+            ),
         )
-        await client.async_get_data()

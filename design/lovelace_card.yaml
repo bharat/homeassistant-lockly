@@ -1,0 +1,91 @@
+type: custom:flex-table-card
+entities:
+  include: input_text.lock_manager_slot_\d+
+clickable: false
+columns:
+  - name: Slot
+    data: state
+    modify: |
+      const y = JSON.parse(x);
+      const enabled = y.enabled
+      const num = y.slot;
+      // build simple switch UI that reflects current state
+      '<div class="slot-cell">' +
+        '<span class="slot-num">' + num + '</span>' +
+        '<span class="slot-switch ' + (y.enabled ? 'on' : 'off') + '"></span>' +
+      '</div>';
+    double_tap_action:
+      action: perform-action
+      perform_action: script.lock_manager_toggle_slot_enabled
+      target: {}
+      data:
+        slot: cell[0]
+  - name: Name
+    data: state
+    modify: JSON.parse(x).name
+    edit_action:
+      action: perform-action
+      perform_action: script.lock_manager_set_slot_name
+      target: {}
+      data:
+        slot: cell[0]
+        name: cell[1]
+  - name: PIN
+    data: state
+    modify: JSON.parse(x).pin
+    edit_action:
+      action: perform-action
+      perform_action: script.lock_manager_set_slot_pin
+      target: {}
+      data:
+        slot: cell[0]
+        pin: cell[2]
+  - name: Apply
+    data: state
+    modify: |
+      const y = JSON.parse(x);
+      if (y.busy) {
+        '<span class="lm-apply busy"><span class="lm-spin"></span></span>';
+      } else {
+        'apply';
+      }
+    align: center
+    tap_action:
+      action: perform-action
+      perform_action: script.lock_manager_apply_slot
+      target: {}
+      data:
+        slot: cell[0]
+      confirmation:
+        text: Update slot cell[0]?
+css:
+  table: "width: 100%"
+  table th: "font-size: 130%"
+  table th:nth-child(1): "text-align: center"
+  table th:nth-child(2): "text-align: center"
+  table tr td:nth-child(5): "font-weight: 600; text-decoration: underline; cursor: pointer"
+  td .slot-cell: display:inline-flex; gap:10px; align-items:center; justify-content:center;
+  td .slot-num: min-width:1.5em; text-align:right;
+  td .slot-switch: >-
+    position:relative; width:34px; height:18px; border-radius:9px;
+    background:#bdbdbd; display:inline-block; vertical-align:middle;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.08); transition:background .2s;
+  td .slot-switch::after: >-
+    content:""; position:absolute; top:2px; left:2px; width:14px; height:14px;
+    border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25);
+    transition:transform .2s;
+  td .slot-switch.on: background:#43a047;
+  td .slot-switch.on::after: transform:translateX(16px);
+  table tr:has(.slot-switch.on) td: background:rgba(0,200,83,0.12);
+  table tr:has(.slot-switch.off) td: background:rgba(255,82,82,0.10);
+  td .lm-apply.busy: >-
+    display: flex;                 /* full flex container */ align-items:
+    center;           /* vertical center */ justify-content: center;       /*
+    horizontal center */ height: 100%; min-width: 3em;
+  td .lm-spin: >-
+    width: 16px; height: 16px; border: 2px solid rgba(0,0,0,.2);
+    border-top-color: rgba(0,0,0,.6); border-radius: 50%; display:
+    inline-block;         /* keep it simple; works fine inside flex parent */
+    animation: lmspin .8s linear infinite; will-change: transform;
+  "@keyframes lmspin": 0%{transform:rotate(0)} 100%{transform:rotate(360deg)}
+  "@-webkit-keyframes lmspin": 0%{-webkit-transform:rotate(0)} 100%{-webkit-transform:rotate(360deg)}

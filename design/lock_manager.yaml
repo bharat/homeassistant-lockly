@@ -1,0 +1,204 @@
+# packages/lock_manager.yaml
+# Minimal “lock manager” helpers + automation for a single lock (“Front Door Lock”)
+# - 20 slots = name, pin, enabled
+# - When Enabled is turned ON => pushes PIN to the lock (validates 4–8 digits)
+# - When Enabled is turned OFF => clears the PIN on the lock
+
+input_text:
+  # Names
+  lock_slot_name_1:   { name: "Name 1",  max: 32, mode: text }
+  lock_slot_name_2:   { name: "Name 2",  max: 32, mode: text }
+  lock_slot_name_3:   { name: "Name 3",  max: 32, mode: text }
+  lock_slot_name_4:   { name: "Name 4",  max: 32, mode: text }
+  lock_slot_name_5:   { name: "Name 5",  max: 32, mode: text }
+  lock_slot_name_6:   { name: "Name 6",  max: 32, mode: text }
+  lock_slot_name_7:   { name: "Name 7",  max: 32, mode: text }
+  lock_slot_name_8:   { name: "Name 8",  max: 32, mode: text }
+  lock_slot_name_9:   { name: "Name 9",  max: 32, mode: text }
+  lock_slot_name_10:  { name: "Name 10", max: 32, mode: text }
+  lock_slot_name_11:  { name: "Name 11", max: 32, mode: text }
+  lock_slot_name_12:  { name: "Name 12", max: 32, mode: text }
+  lock_slot_name_13:  { name: "Name 13", max: 32, mode: text }
+  lock_slot_name_14:  { name: "Name 14", max: 32, mode: text }
+  lock_slot_name_15:  { name: "Name 15", max: 32, mode: text }
+  lock_slot_name_16:  { name: "Name 16", max: 32, mode: text }
+  lock_slot_name_17:  { name: "Name 17", max: 32, mode: text }
+  lock_slot_name_18:  { name: "Name 18", max: 32, mode: text }
+  lock_slot_name_19:  { name: "Name 19", max: 32, mode: text }
+  lock_slot_name_20:  { name: "Name 20", max: 32, mode: text }
+
+  # PINs (keep as string; validate 4–8 digits in the automation)
+  # Note: use mode: text so values are visible in the UI (not masked)
+  lock_slot_pin_1:   { name: "PIN 1",  mode: text, max: 8 }
+  lock_slot_pin_2:   { name: "PIN 2",  mode: text, max: 8 }
+  lock_slot_pin_3:   { name: "PIN 3",  mode: text, max: 8 }
+  lock_slot_pin_4:   { name: "PIN 4",  mode: text, max: 8 }
+  lock_slot_pin_5:   { name: "PIN 5",  mode: text, max: 8 }
+  lock_slot_pin_6:   { name: "PIN 6",  mode: text, max: 8 }
+  lock_slot_pin_7:   { name: "PIN 7",  mode: text, max: 8 }
+  lock_slot_pin_8:   { name: "PIN 8",  mode: text, max: 8 }
+  lock_slot_pin_9:   { name: "PIN 9",  mode: text, max: 8 }
+  lock_slot_pin_10:  { name: "PIN 10", mode: text, max: 8 }
+  lock_slot_pin_11:  { name: "PIN 11", mode: text, max: 8 }
+  lock_slot_pin_12:  { name: "PIN 12", mode: text, max: 8 }
+  lock_slot_pin_13:  { name: "PIN 13", mode: text, max: 8 }
+  lock_slot_pin_14:  { name: "PIN 14", mode: text, max: 8 }
+  lock_slot_pin_15:  { name: "PIN 15", mode: text, max: 8 }
+  lock_slot_pin_16:  { name: "PIN 16", mode: text, max: 8 }
+  lock_slot_pin_17:  { name: "PIN 17", mode: text, max: 8 }
+  lock_slot_pin_18:  { name: "PIN 18", mode: text, max: 8 }
+  lock_slot_pin_19:  { name: "PIN 19", mode: text, max: 8 }
+  lock_slot_pin_20:  { name: "PIN 20", mode: text, max: 8 }
+
+input_boolean:
+  lock_slot_enabled_1:   { name: "Enabled 1" }
+  lock_slot_enabled_2:   { name: "Enabled 2" }
+  lock_slot_enabled_3:   { name: "Enabled 3" }
+  lock_slot_enabled_4:   { name: "Enabled 4" }
+  lock_slot_enabled_5:   { name: "Enabled 5" }
+  lock_slot_enabled_6:   { name: "Enabled 6" }
+  lock_slot_enabled_7:   { name: "Enabled 7" }
+  lock_slot_enabled_8:   { name: "Enabled 8" }
+  lock_slot_enabled_9:   { name: "Enabled 9" }
+  lock_slot_enabled_10:  { name: "Enabled 10" }
+  lock_slot_enabled_11:  { name: "Enabled 11" }
+  lock_slot_enabled_12:  { name: "Enabled 12" }
+  lock_slot_enabled_13:  { name: "Enabled 13" }
+  lock_slot_enabled_14:  { name: "Enabled 14" }
+  lock_slot_enabled_15:  { name: "Enabled 15" }
+  lock_slot_enabled_16:  { name: "Enabled 16" }
+  lock_slot_enabled_17:  { name: "Enabled 17" }
+  lock_slot_enabled_18:  { name: "Enabled 18" }
+  lock_slot_enabled_19:  { name: "Enabled 19" }
+  lock_slot_enabled_20:  { name: "Enabled 20" }
+
+automation:
+  - id: fd_push_pin_on_toggle
+    alias: "Front Door – push/clear PIN when Enabled toggled"
+    mode: queued
+    max: 1
+    trigger:
+      - platform: state
+        entity_id:
+          - input_boolean.lock_slot_enabled_1
+          - input_boolean.lock_slot_enabled_2
+          - input_boolean.lock_slot_enabled_3
+          - input_boolean.lock_slot_enabled_4
+          - input_boolean.lock_slot_enabled_5
+          - input_boolean.lock_slot_enabled_6
+          - input_boolean.lock_slot_enabled_7
+          - input_boolean.lock_slot_enabled_8
+          - input_boolean.lock_slot_enabled_9
+          - input_boolean.lock_slot_enabled_10
+          - input_boolean.lock_slot_enabled_11
+          - input_boolean.lock_slot_enabled_12
+          - input_boolean.lock_slot_enabled_13
+          - input_boolean.lock_slot_enabled_14
+          - input_boolean.lock_slot_enabled_15
+          - input_boolean.lock_slot_enabled_16
+          - input_boolean.lock_slot_enabled_17
+          - input_boolean.lock_slot_enabled_18
+          - input_boolean.lock_slot_enabled_19
+          - input_boolean.lock_slot_enabled_20
+    action:
+      - variables:
+          # Extract N from input_boolean.lock_slot_enabled_N
+          slot: "{{ trigger.to_state.object_id.split('_')[-1] | int }}"
+          pin:  "{{ states('input_text.lock_slot_pin_' ~ slot) }}"
+          # Must match your Zigbee2MQTT friendly_name
+          z2m_device: "Front Door Lock"
+          txid: "lockmgr-{{ slot }}-{{ now().timestamp() | int }}"
+
+
+      # If attempting to enable with an invalid PIN, revert + notify.
+      - choose:
+          - conditions: >
+              {{ trigger.to_state.state == 'on'
+                 and not (pin is string and pin|regex_match('^\\d{4,8}$')) }}
+            sequence:
+              - service: input_boolean.turn_off
+                target:
+                  entity_id: "{{ trigger.entity_id }}"
+              - service: persistent_notification.create
+                data:
+                  title: "Lock Manager"
+                  message: "Slot {{ slot }}: PIN must be 4–8 digits (numbers only)."
+
+          # Enable → push setPinCode
+          - conditions: >
+              {{ trigger.to_state.state == 'on'
+                 and (pin is string and pin|regex_match('^\\d{4,8}$')) }}
+            sequence:
+              - service: mqtt.publish
+                data:
+                  topic: zigbee2mqtt/bridge/request/device/command
+                  qos: 1
+                  payload: >
+                    {
+                      "id": "{{ z2m_device }}",
+                      "endpoint": 1,
+                      "cluster": "closuresDoorLock",
+                      "command": "setPinCode",
+                      "commandType": "functional",
+                      "transaction": "{{ txid }}",
+                      "payload": {
+                        "userid": {{ slot }},
+                        "usertype": 0,
+                        "userstatus": 1,
+                        "pincodevalue": "{{ pin }}"
+                      }
+                    }
+
+          # Disable → clearPinCode
+          - conditions: "{{ trigger.to_state.state == 'off' }}"
+            sequence:
+              - service: mqtt.publish
+                data:
+                  topic: zigbee2mqtt/bridge/request/device/command
+                  qos: 1
+                  payload: >
+                    {
+                      "id": "{{ z2m_device }}",
+                      "endpoint": 1,
+                      "cluster": "closuresDoorLock",
+                      "command": "clearPinCode",
+                      "commandType": "functional",
+                      "transaction": "lock-manager",
+                      "payload": {
+                        "userid": {{ slot }}
+                      }
+                    }
+
+# (Optional) Manual “push now” script for a slot that is already enabled.
+# Call with: service: script.lock_slot_push  |  data: {slot: 1}
+script:
+  lock_slot_push:
+    alias: "Lock: push current PIN to slot"
+    mode: queued
+    fields:
+      slot:
+        description: "Slot number (1-20)"
+    sequence:
+      - variables:
+          pin: "{{ states('input_text.lock_slot_pin_' ~ slot) }}"
+      - condition: template
+        value_template: "{{ pin is string and pin|regex_match('^\\d{4,8}$') }}"
+      - service: mqtt.publish
+        data:
+          topic: zigbee2mqtt/bridge/request/device/command
+          qos: 1
+          payload: >
+            {
+              "id": "Front Door Lock",
+              "endpoint": 1,
+              "cluster": "closuresDoorLock",
+              "command": "setPinCode",
+              "commandType": "functional",
+              "transaction": "lock-manager",
+              "payload": {
+                "userid": {{ slot|int }},
+                "usertype": 0,
+                "userstatus": 1,
+                "pincodevalue": "{{ pin }}"
+              }
+            }

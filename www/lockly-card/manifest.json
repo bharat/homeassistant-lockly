@@ -1,0 +1,7 @@
+{
+  "name": "Lockly Card",
+  "content_in_root": false,
+  "filename": "lockly-card.js",
+  "render_readme": true,
+  "type": "module"
+}

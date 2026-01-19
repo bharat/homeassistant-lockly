@@ -1,27 +1,21 @@
-"""Switch platform for integration_blueprint."""
+"""Switch platform for Lockly slots."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.const import Platform
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .entity import LocklyEntity
+from .coordinator import LocklySlot, LocklySlotCoordinator
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-    from .coordinator import LocklyDataUpdateCoordinator
     from .data import LocklyConfigEntry
-
-ENTITY_DESCRIPTIONS = (
-    SwitchEntityDescription(
-        key="integration_blueprint",
-        name="Integration Switch",
-        icon="mdi:format-quote-close",
-    ),
-)
 
 
 async def async_setup_entry(
@@ -30,38 +24,64 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the switch platform."""
-    async_add_entities(
-        LocklySwitch(
-            coordinator=entry.runtime_data.coordinator,
-            entity_description=entity_description,
-        )
-        for entity_description in ENTITY_DESCRIPTIONS
-    )
+    manager = entry.runtime_data.manager
+
+    def _factory(slot: LocklySlot) -> list[LocklySlotEnabledSwitch]:
+        return [LocklySlotEnabledSwitch(entry.runtime_data.coordinator, slot.slot)]
+
+    manager.register_platform(Platform.SWITCH.value, async_add_entities, _factory)
 
 
-class LocklySwitch(LocklyEntity, SwitchEntity):
-    """integration_blueprint switch class."""
+class LocklySlotEnabledSwitch(CoordinatorEntity[LocklySlotCoordinator], SwitchEntity):
+    """Switch entity for slot enabled state."""
 
-    def __init__(
-        self,
-        coordinator: LocklyDataUpdateCoordinator,
-        entity_description: SwitchEntityDescription,
-    ) -> None:
-        """Initialize the switch class."""
+    _attr_icon = "mdi:lock"
+
+    def __init__(self, coordinator: LocklySlotCoordinator, slot_id: int) -> None:
+        """Initialize the switch."""
         super().__init__(coordinator)
-        self.entity_description = entity_description
+        self._slot_id = slot_id
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}-slot-{slot_id}-enabled"
+        )
+        self._attr_name = f"Slot {slot_id} Enabled"
+        self._attr_device_info = DeviceInfo(
+            identifiers={
+                (coordinator.config_entry.domain, coordinator.config_entry.entry_id)
+            },
+            name=coordinator.config_entry.title,
+        )
+
+    @property
+    def slot(self) -> LocklySlot | None:
+        """Return the current slot."""
+        return self.coordinator.data.get(self._slot_id)
 
     @property
     def is_on(self) -> bool:
-        """Return true if the switch is on."""
-        return self.coordinator.data.get("title", "") == "foo"
+        """Return true if the slot is enabled."""
+        slot = self.slot
+        return bool(slot.enabled) if slot else False
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return extra state attributes."""
+        slot = self.slot
+        return {
+            "lockly_entry_id": self.coordinator.config_entry.entry_id,
+            "lockly_slot": self._slot_id,
+            "lockly_type": "enabled",
+            "busy": getattr(slot, "busy", False) if slot else False,
+        }
 
     async def async_turn_on(self, **_: Any) -> None:
-        """Turn on the switch."""
-        await self.coordinator.config_entry.runtime_data.client.async_set_title("bar")
-        await self.coordinator.async_request_refresh()
+        """Enable the slot."""
+        await self.coordinator.config_entry.runtime_data.manager.update_slot(
+            self._slot_id, enabled=True
+        )
 
     async def async_turn_off(self, **_: Any) -> None:
-        """Turn off the switch."""
-        await self.coordinator.config_entry.runtime_data.client.async_set_title("foo")
-        await self.coordinator.async_request_refresh()
+        """Disable the slot."""
+        await self.coordinator.config_entry.runtime_data.manager.update_slot(
+            self._slot_id, enabled=False
+        )

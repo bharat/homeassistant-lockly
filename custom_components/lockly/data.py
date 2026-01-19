@@ -1,4 +1,4 @@
-"""Custom types for integration_blueprint."""
+"""Custom types for Lockly."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.loader import Integration
 
-    from .api import LocklyApiClient
-    from .coordinator import LocklyDataUpdateCoordinator
+    from .coordinator import LocklySlotCoordinator
+    from .manager import LocklyManager
 
 
 type LocklyConfigEntry = ConfigEntry[LocklyData]
@@ -20,6 +20,6 @@ type LocklyConfigEntry = ConfigEntry[LocklyData]
 class LocklyData:
     """Data for the Lockly integration."""
 
-    client: LocklyApiClient
-    coordinator: LocklyDataUpdateCoordinator
+    coordinator: LocklySlotCoordinator
+    manager: LocklyManager
     integration: Integration

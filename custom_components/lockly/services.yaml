@@ -1,0 +1,62 @@
+add_slot:
+  name: Add Slot
+  description: Create a new lock slot.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+
+remove_slot:
+  name: Remove Slot
+  description: Remove a slot and clear it from all locks.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    slot:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: box
+
+apply_slot:
+  name: Apply Slot
+  description: Apply a slot's settings to all locks.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    slot:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: box
+
+apply_all:
+  name: Apply All
+  description: Apply all slots to all locks.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+
+wipe_slots:
+  name: Wipe Slots
+  description: Remove all slots or the specified subset.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    slots:
+      required: false
+      selector:
+        text:
