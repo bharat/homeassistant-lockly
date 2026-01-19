@@ -7,23 +7,22 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
 from homeassistant.helpers import selector
+from homeassistant.setup import async_setup_component
+from homeassistant.util import slugify
 
 from .const import (
     CONF_ENDPOINT,
-    CONF_LOCK_NAMES,
+    CONF_LOCK_ENTITIES,
+    CONF_LOCK_GROUP_ENTITY,
+    CONF_LOCK_GROUP_NAME,
     CONF_MAX_SLOTS,
     CONF_MQTT_TOPIC,
     DEFAULT_ENDPOINT,
-    DEFAULT_LOCK_NAMES,
     DEFAULT_MAX_SLOTS,
     DEFAULT_MQTT_TOPIC,
     DOMAIN,
+    LOGGER,
 )
-
-
-def _parse_lock_names(value: str) -> list[str]:
-    """Parse a comma-separated lock list into an array."""
-    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 class LocklyFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -36,11 +35,101 @@ class LocklyFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         user_input: dict | None = None,
     ) -> config_entries.ConfigFlowResult:
         """Handle a flow initialized by the user."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            lock_names = _parse_lock_names(user_input[CONF_LOCK_NAMES])
+            group_name = user_input[CONF_LOCK_GROUP_NAME]
+            lock_entities = user_input[CONF_LOCK_ENTITIES]
+            group_object_id = slugify(group_name)
+            group_entity_id = f"group.{group_object_id}"
+            if not await async_setup_component(self.hass, "group", {}):
+                errors["base"] = "group_setup_failed"
+            else:
+                try:
+                    service_data = {
+                        "entities": lock_entities,
+                        "name": group_name,
+                    }
+                    if self.hass.states.get(group_entity_id):
+                        service_data["entity_id"] = group_entity_id
+                    else:
+                        service_data["object_id"] = group_object_id
+                    await self.hass.services.async_call(
+                        "group",
+                        "set",
+                        service_data,
+                        blocking=True,
+                    )
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.exception("Failed to create lock group: %s", err)
+                    errors["base"] = "group_create_failed"
+
+            if errors:
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required(
+                                CONF_NAME, default=user_input.get(CONF_NAME, "Lockly")
+                            ): selector.TextSelector(
+                                selector.TextSelectorConfig(
+                                    type=selector.TextSelectorType.TEXT
+                                )
+                            ),
+                            vol.Required(
+                                CONF_LOCK_GROUP_NAME,
+                                default=user_input.get(
+                                    CONF_LOCK_GROUP_NAME, "Lockly Locks"
+                                ),
+                            ): selector.TextSelector(
+                                selector.TextSelectorConfig(
+                                    type=selector.TextSelectorType.TEXT
+                                )
+                            ),
+                            vol.Required(
+                                CONF_LOCK_ENTITIES,
+                                default=user_input.get(CONF_LOCK_ENTITIES, []),
+                            ): selector.EntitySelector(
+                                selector.EntitySelectorConfig(
+                                    domain="lock", multiple=True
+                                )
+                            ),
+                            vol.Required(
+                                CONF_MAX_SLOTS,
+                                default=user_input.get(
+                                    CONF_MAX_SLOTS, DEFAULT_MAX_SLOTS
+                                ),
+                            ): selector.NumberSelector(
+                                selector.NumberSelectorConfig(
+                                    min=1, max=100, mode=selector.NumberSelectorMode.BOX
+                                )
+                            ),
+                            vol.Required(
+                                CONF_MQTT_TOPIC,
+                                default=user_input.get(
+                                    CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC
+                                ),
+                            ): selector.TextSelector(
+                                selector.TextSelectorConfig(
+                                    type=selector.TextSelectorType.TEXT
+                                )
+                            ),
+                            vol.Required(
+                                CONF_ENDPOINT,
+                                default=user_input.get(CONF_ENDPOINT, DEFAULT_ENDPOINT),
+                            ): selector.NumberSelector(
+                                selector.NumberSelectorConfig(
+                                    min=1, max=255, mode=selector.NumberSelectorMode.BOX
+                                )
+                            ),
+                        },
+                    ),
+                    errors=errors,
+                )
             data = {
                 CONF_NAME: user_input[CONF_NAME],
-                CONF_LOCK_NAMES: lock_names,
+                CONF_LOCK_GROUP_NAME: group_name,
+                CONF_LOCK_GROUP_ENTITY: group_entity_id,
+                CONF_LOCK_ENTITIES: lock_entities,
                 CONF_MAX_SLOTS: user_input[CONF_MAX_SLOTS],
                 CONF_MQTT_TOPIC: user_input[CONF_MQTT_TOPIC],
                 CONF_ENDPOINT: user_input[CONF_ENDPOINT],
@@ -55,10 +144,13 @@ class LocklyFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
                     ),
                     vol.Required(
-                        CONF_LOCK_NAMES,
-                        default=", ".join(DEFAULT_LOCK_NAMES),
+                        CONF_LOCK_GROUP_NAME,
+                        default="Lockly Locks",
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                    ),
+                    vol.Required(CONF_LOCK_ENTITIES): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="lock", multiple=True)
                     ),
                     vol.Required(
                         CONF_MAX_SLOTS,
@@ -84,6 +176,7 @@ class LocklyFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                 },
             ),
+            errors=errors,
         )
 
     @staticmethod
@@ -106,12 +199,82 @@ class LocklyOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict | None = None
     ) -> config_entries.ConfigFlowResult:
         """Manage the options."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            lock_names = _parse_lock_names(user_input[CONF_LOCK_NAMES])
+            group_entity_id = (self._entry.data or {}).get(CONF_LOCK_GROUP_ENTITY)
+            lock_entities = user_input[CONF_LOCK_ENTITIES]
+            if group_entity_id:
+                if not await async_setup_component(self.hass, "group", {}):
+                    errors["base"] = "group_setup_failed"
+                else:
+                    try:
+                        await self.hass.services.async_call(
+                            "group",
+                            "set",
+                            {
+                                "entity_id": group_entity_id,
+                                "entities": lock_entities,
+                            },
+                            blocking=True,
+                        )
+                    except Exception as err:  # noqa: BLE001
+                        LOGGER.exception("Failed to update lock group: %s", err)
+                        errors["base"] = "group_update_failed"
+                if errors:
+                    return self.async_show_form(
+                        step_id="init",
+                        data_schema=vol.Schema(
+                            {
+                                vol.Required(
+                                    CONF_LOCK_ENTITIES,
+                                    default=lock_entities,
+                                ): selector.EntitySelector(
+                                    selector.EntitySelectorConfig(
+                                        domain="lock", multiple=True
+                                    )
+                                ),
+                                vol.Required(
+                                    CONF_MAX_SLOTS,
+                                    default=user_input.get(
+                                        CONF_MAX_SLOTS, DEFAULT_MAX_SLOTS
+                                    ),
+                                ): selector.NumberSelector(
+                                    selector.NumberSelectorConfig(
+                                        min=1,
+                                        max=100,
+                                        mode=selector.NumberSelectorMode.BOX,
+                                    )
+                                ),
+                                vol.Required(
+                                    CONF_MQTT_TOPIC,
+                                    default=user_input.get(
+                                        CONF_MQTT_TOPIC, DEFAULT_MQTT_TOPIC
+                                    ),
+                                ): selector.TextSelector(
+                                    selector.TextSelectorConfig(
+                                        type=selector.TextSelectorType.TEXT
+                                    )
+                                ),
+                                vol.Required(
+                                    CONF_ENDPOINT,
+                                    default=user_input.get(
+                                        CONF_ENDPOINT, DEFAULT_ENDPOINT
+                                    ),
+                                ): selector.NumberSelector(
+                                    selector.NumberSelectorConfig(
+                                        min=1,
+                                        max=255,
+                                        mode=selector.NumberSelectorMode.BOX,
+                                    )
+                                ),
+                            },
+                        ),
+                        errors=errors,
+                    )
             return self.async_create_entry(
                 title="",
                 data={
-                    CONF_LOCK_NAMES: lock_names,
+                    CONF_LOCK_ENTITIES: lock_entities,
                     CONF_MAX_SLOTS: user_input[CONF_MAX_SLOTS],
                     CONF_MQTT_TOPIC: user_input[CONF_MQTT_TOPIC],
                     CONF_ENDPOINT: user_input[CONF_ENDPOINT],
@@ -119,15 +282,21 @@ class LocklyOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
         current = self._entry.options or self._entry.data
+        group_entity_id = current.get(CONF_LOCK_GROUP_ENTITY)
+        group_entities = []
+        if group_entity_id:
+            group_state = self.hass.states.get(group_entity_id)
+            if group_state:
+                group_entities = group_state.attributes.get("entity_id", [])
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_LOCK_NAMES,
-                        default=", ".join(current.get(CONF_LOCK_NAMES, [])),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                        CONF_LOCK_ENTITIES,
+                        default=group_entities,
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="lock", multiple=True)
                     ),
                     vol.Required(
                         CONF_MAX_SLOTS,
@@ -153,4 +322,5 @@ class LocklyOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 },
             ),
+            errors=errors,
         )

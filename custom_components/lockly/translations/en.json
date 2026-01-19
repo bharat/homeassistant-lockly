@@ -6,12 +6,17 @@
                 "description": "Configure the Lockly slot manager for Zigbee2MQTT locks.",
                 "data": {
                     "name": "Name",
-                    "lock_names": "Lock friendly names (comma-separated)",
+                    "lock_group_name": "Lock group name",
+                    "lock_entities": "Locks",
                     "max_slots": "Maximum slots",
                     "mqtt_topic": "Zigbee2MQTT base topic",
                     "endpoint": "Zigbee endpoint"
                 }
             }
+        },
+        "error": {
+            "group_setup_failed": "Unable to set up the group component.",
+            "group_create_failed": "Unable to create the lock group."
         }
     },
     "options": {
@@ -19,12 +24,16 @@
             "init": {
                 "title": "Lockly Options",
                 "data": {
-                    "lock_names": "Lock friendly names (comma-separated)",
+                    "lock_entities": "Locks",
                     "max_slots": "Maximum slots",
                     "mqtt_topic": "Zigbee2MQTT base topic",
                     "endpoint": "Zigbee endpoint"
                 }
             }
+        },
+        "error": {
+            "group_setup_failed": "Unable to set up the group component.",
+            "group_update_failed": "Unable to update the lock group."
         }
     }
 }

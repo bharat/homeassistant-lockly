@@ -20,15 +20,12 @@ Zigbee2MQTT lock slots across one or more locks.
 ## Configuration
 
 1. Go to Settings > Devices & Services and add the Lockly integration.
-2. Enter the Zigbee2MQTT lock friendly names (comma-separated).
+2. Create a lock group and pick locks using the entity picker.
 3. Set the maximum number of slots, MQTT base topic, and endpoint.
 
 ## Lovelace Card
 
-1. Add the resource:
-   - URL: `/local/lockly-card/lockly-card.js`
-   - Type: `JavaScript Module`
-2. Add the card:
+1. Add the card:
 
 ```
 type: custom:lockly-card
@@ -39,11 +36,17 @@ title: Lockly
 To find the entry ID, open the Lockly integration in Settings > Devices & Services
 and copy the entry ID from the browser URL.
 
+### Resource registration
+
+- Storage mode (default): the integration registers the card automatically.
+- YAML mode: add a resource pointing to `/lockly/lockly-card.js` (type `module`).
+
 ## Services
 
 - `lockly.add_slot`
 - `lockly.remove_slot`
 - `lockly.apply_slot`
+- `lockly.push_slot`
 - `lockly.apply_all`
 - `lockly.wipe_slots`
 

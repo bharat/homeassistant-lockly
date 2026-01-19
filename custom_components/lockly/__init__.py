@@ -5,18 +5,24 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
-from homeassistant.const import Platform
+from homeassistant.components import mqtt, websocket_api
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
+from homeassistant.core import CoreState, Event
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 
 from .const import (
+    CONF_LOCK_GROUP_ENTITY,
+    CONF_LOCK_GROUP_NAME,
     DOMAIN,
+    INTEGRATION_VERSION,
     LOGGER,
     SERVICE_ADD_SLOT,
     SERVICE_APPLY_ALL,
     SERVICE_APPLY_SLOT,
+    SERVICE_PUSH_SLOT,
     SERVICE_REMOVE_SLOT,
     SERVICE_WIPE_SLOTS,
     STORAGE_KEY,
@@ -24,9 +30,12 @@ from .const import (
 )
 from .coordinator import LocklySlotCoordinator
 from .data import LocklyData
+from .frontend import JSModuleRegistration
 from .manager import LocklyManager
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.core import HomeAssistant, ServiceCall
 
     from .data import LocklyConfigEntry
@@ -55,9 +64,93 @@ SERVICE_SCHEMA_WIPE = vol.Schema(
 ENTRY_NOT_FOUND = "entry_not_found"
 
 
-async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0915
     """Set up the Lockly integration."""
     hass.data.setdefault(DOMAIN, {})
+    skip_frontend = hass.data.get(f"{DOMAIN}_skip_frontend", False)
+
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/version",
+        }
+    )
+    @websocket_api.async_response
+    async def websocket_get_version(
+        _hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict,
+    ) -> None:
+        """Return the integration version."""
+        connection.send_result(msg["id"], {"version": INTEGRATION_VERSION})
+
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/config",
+            vol.Required("entry_id"): cv.string,
+        }
+    )
+    @websocket_api.async_response
+    async def websocket_get_config(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict,
+    ) -> None:
+        """Return config entry data used by the card."""
+        entry_id = msg["entry_id"]
+        runtime = hass.data.get(DOMAIN, {}).get(entry_id)
+        if runtime is None:
+            connection.send_error(msg["id"], ENTRY_NOT_FOUND, "Entry not found")
+            return
+        entry = runtime.coordinator.config_entry
+        data = entry.options or entry.data
+        connection.send_result(
+            msg["id"],
+            {
+                "group_entity_id": data.get(CONF_LOCK_GROUP_ENTITY),
+                "group_name": data.get(CONF_LOCK_GROUP_NAME),
+            },
+        )
+
+    websocket_api.async_register_command(hass, websocket_get_version)
+    websocket_api.async_register_command(hass, websocket_get_config)
+
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/entries",
+        }
+    )
+    @websocket_api.async_response
+    async def websocket_list_entries(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict,
+    ) -> None:
+        """Return Lockly config entries for the card editor."""
+        entries = []
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            data = entry.options or entry.data
+            entries.append(
+                {
+                    "entry_id": entry.entry_id,
+                    "title": entry.title,
+                    "group_entity_id": data.get(CONF_LOCK_GROUP_ENTITY),
+                    "group_name": data.get(CONF_LOCK_GROUP_NAME),
+                }
+            )
+        connection.send_result(msg["id"], entries)
+
+    websocket_api.async_register_command(hass, websocket_list_entries)
+
+    if not skip_frontend:
+
+        async def _register_frontend(_: Event | None = None) -> None:
+            registration = JSModuleRegistration(hass)
+            await registration.async_register()
+
+        if hass.state is CoreState.running:
+            await _register_frontend()
+        else:
+            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _register_frontend)
 
     async def _get_manager(call: ServiceCall) -> LocklyManager:
         entry_id = call.data["entry_id"]
@@ -76,6 +169,10 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
         await manager.remove_slot(call.data["slot"])
 
     async def _handle_apply_slot(call: ServiceCall) -> None:
+        manager = await _get_manager(call)
+        await manager.apply_slot(call.data["slot"])
+
+    async def _handle_push_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
         await manager.apply_slot(call.data["slot"])
 
@@ -100,11 +197,15 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
         DOMAIN, SERVICE_APPLY_SLOT, _handle_apply_slot, schema=SERVICE_SCHEMA_SLOT
     )
     hass.services.async_register(
+        DOMAIN, SERVICE_PUSH_SLOT, _handle_push_slot, schema=SERVICE_SCHEMA_SLOT
+    )
+    hass.services.async_register(
         DOMAIN, SERVICE_APPLY_ALL, _handle_apply_all, schema=SERVICE_SCHEMA_ENTRY
     )
     hass.services.async_register(
         DOMAIN, SERVICE_WIPE_SLOTS, _handle_wipe, schema=SERVICE_SCHEMA_WIPE
     )
+
     return True
 
 
@@ -123,6 +224,7 @@ async def async_setup_entry(
         coordinator=coordinator,
         manager=manager,
         integration=async_get_loaded_integration(hass, entry.domain),
+        subscriptions=[],
     )
     await coordinator.async_load()
 
@@ -130,6 +232,29 @@ async def async_setup_entry(
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     hass.data[DOMAIN][entry.entry_id] = entry.runtime_data
+
+    async def _handle_action_message(msg: mqtt.ReceiveMessage) -> None:
+        topic = msg.topic
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            try:
+                payload = payload.decode()
+            except UnicodeDecodeError:
+                payload = payload.decode(errors="replace")
+        if not topic.endswith("/action"):
+            return
+        lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
+        if not lock_name:
+            return
+        LOGGER.debug("MQTT %s: %s", topic, payload)
+        await manager.handle_mqtt_action(lock_name, str(payload))
+
+    unsub: Callable[[], None] = await mqtt.async_subscribe(
+        hass,
+        f"{manager.mqtt_topic}/+/action",
+        _handle_action_message,
+    )
+    entry.runtime_data.subscriptions.append(unsub)
     return True
 
 
@@ -140,6 +265,10 @@ async def async_unload_entry(
     """Handle removal of an entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        runtime = hass.data[DOMAIN].get(entry.entry_id)
+        if runtime and runtime.subscriptions:
+            for unsub in runtime.subscriptions:
+                unsub()
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
 

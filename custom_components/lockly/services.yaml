@@ -39,6 +39,22 @@ apply_slot:
           max: 100
           mode: box
 
+push_slot:
+  name: Push Slot
+  description: Push a slot's PIN to all locks (same as apply).
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    slot:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: box
+
 apply_all:
   name: Apply All
   description: Apply all slots to all locks.

@@ -67,9 +67,11 @@ class LocklySlotEnabledSwitch(CoordinatorEntity[LocklySlotCoordinator], SwitchEn
     def extra_state_attributes(self) -> dict:
         """Return extra state attributes."""
         slot = self.slot
+        manager = self.coordinator.config_entry.runtime_data.manager
         return {
             "lockly_entry_id": self.coordinator.config_entry.entry_id,
             "lockly_slot": self._slot_id,
+            "lockly_group_entity": manager.group_entity_id,
             "lockly_type": "enabled",
             "busy": getattr(slot, "busy", False) if slot else False,
         }

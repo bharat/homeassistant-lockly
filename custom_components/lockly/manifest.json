@@ -6,10 +6,12 @@
   ],
   "config_flow": true,
   "dependencies": [
-    "mqtt"
+    "mqtt",
+    "frontend",
+    "http"
   ],
   "documentation": "https://github.com/bharat/homeassistant-lockly",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/bharat/homeassistant-lockly/issues",
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

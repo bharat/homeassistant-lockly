@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING
 
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_ENDPOINT,
+    CONF_LOCK_ENTITIES,
+    CONF_LOCK_GROUP_ENTITY,
     CONF_LOCK_NAMES,
     CONF_MAX_SLOTS,
     CONF_MQTT_TOPIC,
@@ -19,6 +23,7 @@ from .const import (
     DEFAULT_LOCK_NAMES,
     DEFAULT_MAX_SLOTS,
     DEFAULT_MQTT_TOPIC,
+    LOGGER,
     PIN_REGEX,
 )
 from .coordinator import LocklySlot, LocklySlotCoordinator
@@ -52,6 +57,16 @@ class LocklyManager:
         self._platforms: dict[str, tuple[Callable, EntityFactory]] = {}
         self._entities: dict[int, dict[str, list]] = {}
         self._pin_re = re.compile(PIN_REGEX)
+        self._pending_by_lock: dict[str, list[int]] = {}
+        self._pending_slots: dict[int, set[str]] = {}
+        self._pending_timeouts: dict[int, object] = {}
+
+    @property
+    def group_entity_id(self) -> str | None:
+        """Return the configured lock group entity id."""
+        data = self._entry.options or self._entry.data
+        group_entity_id = data.get(CONF_LOCK_GROUP_ENTITY)
+        return str(group_entity_id) if group_entity_id else None
 
     @property
     def lock_names(self) -> list[str]:
@@ -60,7 +75,63 @@ class LocklyManager:
         names = data.get(CONF_LOCK_NAMES, DEFAULT_LOCK_NAMES)
         if isinstance(names, str):
             names = [item.strip() for item in names.split(",") if item.strip()]
+        if self.group_entity_id:
+            group_names = self._resolve_group_lock_names(self.group_entity_id)
+            if group_names:
+                return group_names
+        if lock_entities := self._get_lock_entities(data):
+            entity_names = self._resolve_lock_names_from_entities(lock_entities)
+            if entity_names:
+                return entity_names
+        LOGGER.debug(
+            "No lock names resolved (group_entity_id=%s, lock_entities=%s, names=%s)",
+            self.group_entity_id,
+            self._get_lock_entities(data),
+            names,
+        )
         return [name for name in names if name]
+
+    def _get_lock_entities(self, data: dict) -> list[str]:
+        """Return lock entities from entry data/options."""
+        entities = data.get(CONF_LOCK_ENTITIES, [])
+        if isinstance(entities, str):
+            return [entities]
+        return list(entities) if isinstance(entities, list) else []
+
+    def _resolve_group_lock_names(self, group_entity_id: str) -> list[str]:
+        """Resolve lock friendly names from a group entity."""
+        group_state = self._hass.states.get(group_entity_id)
+        if not group_state:
+            LOGGER.debug("Group entity %s not found in state", group_entity_id)
+            return []
+        entity_ids = group_state.attributes.get("entity_id", [])
+        if isinstance(entity_ids, str):
+            entity_ids = [entity_ids]
+        if not isinstance(entity_ids, list):
+            return []
+        return self._resolve_lock_names_from_entities(entity_ids)
+
+    def _resolve_lock_names_from_entities(self, entity_ids: list[str]) -> list[str]:
+        """Resolve Zigbee2MQTT lock names from entity ids."""
+        registry = er.async_get(self._hass)
+        device_registry = dr.async_get(self._hass)
+        names: list[str] = []
+        for entity_id in entity_ids:
+            state = self._hass.states.get(entity_id)
+            if state and state.attributes.get("friendly_name"):
+                names.append(state.attributes["friendly_name"])
+                continue
+            if state and state.attributes.get("device"):
+                names.append(state.attributes["device"])
+                continue
+            entry = registry.async_get(entity_id)
+            if entry and entry.device_id:
+                device = device_registry.async_get(entry.device_id)
+                if device and device.name:
+                    names.append(device.name)
+                    continue
+            names.append(entity_id)
+        return names
 
     @property
     def max_slots(self) -> int:
@@ -115,6 +186,19 @@ class LocklyManager:
         """Persist coordinator state."""
         await self._coordinator.async_save()
         self._coordinator.async_set_updated_data(self._coordinator.data)
+        LOGGER.debug(
+            "Persisted slots: %s",
+            [
+                {
+                    "slot": slot.slot,
+                    "name": slot.name,
+                    "pin": slot.pin,
+                    "enabled": slot.enabled,
+                    "busy": slot.busy,
+                }
+                for slot in self._coordinator.data.values()
+            ],
+        )
 
     def _next_available_slot(self) -> int | None:
         """Find next available slot ID."""
@@ -146,7 +230,7 @@ class LocklyManager:
         await self._save()
         await self._remove_entities_for_slot(slot_id)
 
-    async def update_slot(
+    async def update_slot(  # noqa: PLR0913
         self,
         slot_id: int,
         *,
@@ -154,6 +238,8 @@ class LocklyManager:
         pin: str | None = None,
         enabled: bool | None = None,
         busy: bool | None = None,
+        last_response: dict | None = None,
+        last_response_ts: float | None = None,
     ) -> None:
         """Update a slot's stored values."""
         if slot_id not in self._coordinator.data:
@@ -165,10 +251,42 @@ class LocklyManager:
         if pin is not None:
             slot.pin = pin
         if enabled is not None:
+            if enabled and not self._pin_re.match(slot.pin or ""):
+                slot.enabled = False
+                await self._save()
+                await self._notify_invalid_pin(slot_id)
+                message = INVALID_PIN
+                raise ServiceValidationError(message)
             slot.enabled = enabled
         if busy is not None:
             slot.busy = busy
+        if last_response is not None:
+            slot.last_response = last_response
+        if last_response_ts is not None:
+            slot.last_response_ts = last_response_ts
+        LOGGER.debug(
+            "Updated slot %s (name=%s, pin=%s, enabled=%s, busy=%s)",
+            slot_id,
+            slot.name,
+            slot.pin,
+            slot.enabled,
+            slot.busy,
+        )
         await self._save()
+
+    async def _notify_invalid_pin(self, slot_id: int) -> None:
+        """Notify user about an invalid PIN."""
+        if not self._hass.services.has_service("persistent_notification", "create"):
+            return
+        await self._hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": "Lockly",
+                "message": f"Slot {slot_id}: PIN must be 4-8 digits (numbers only).",
+            },
+            blocking=True,
+        )
 
     async def apply_slot(self, slot_id: int, *, force_clear: bool = False) -> None:
         """Apply a slot to all locks."""
@@ -176,20 +294,34 @@ class LocklyManager:
             message = SLOT_NOT_FOUND
             raise ServiceValidationError(message)
         slot = self._coordinator.data[slot_id]
-        if not self.lock_names:
+        lock_names = self.lock_names
+        if not lock_names:
             message = NO_LOCKS_CONFIGURED
             raise ServiceValidationError(message)
+        LOGGER.debug(
+            "Applying slot %s to locks %s (enabled=%s)",
+            slot_id,
+            lock_names,
+            slot.enabled,
+        )
         if not force_clear and slot.enabled and not self._pin_re.match(slot.pin or ""):
+            await self._notify_invalid_pin(slot_id)
             message = INVALID_PIN
             raise ServiceValidationError(message)
         await self.update_slot(slot_id, busy=True)
-        try:
+        pending_locks = set(lock_names)
+        self._pending_slots[slot_id] = pending_locks
+        for lock_name in lock_names:
+            self._pending_by_lock.setdefault(lock_name, []).append(slot_id)
             if force_clear or not slot.enabled:
-                await self._publish_clear(slot_id, self.lock_names)
+                await self._publish_clear(slot_id, lock_name)
             else:
-                await self._publish_set(slot_id, slot.pin, self.lock_names)
-        finally:
+                await self._publish_set(slot_id, slot.pin, lock_name)
+        if self._hass.data.get("lockly_skip_timeout"):
             await self.update_slot(slot_id, busy=False)
+            self._pending_slots.pop(slot_id, None)
+            return
+        self._schedule_timeout(slot_id)
 
     async def apply_all(self) -> None:
         """Apply all slots."""
@@ -205,49 +337,107 @@ class LocklyManager:
             if slot_id in self._coordinator.data:
                 await self.remove_slot(slot_id)
 
-    async def _publish_set(
-        self, slot_id: int, pin: str, lock_names: Iterable[str]
-    ) -> None:
-        """Publish setPinCode to locks."""
+    async def _publish_set(self, slot_id: int, pin: str, lock_name: str) -> None:
+        """Publish pin_code set to a lock."""
         payload = {
-            "endpoint": self.endpoint,
-            "cluster": "closuresDoorLock",
-            "command": "setPinCode",
-            "commandType": "functional",
-            "transaction": f"lockly-{slot_id}",
-            "payload": {
-                "userid": slot_id,
-                "usertype": 0,
-                "userstatus": 1,
-                "pincodevalue": pin,
-            },
+            "pin_code": {
+                "user": slot_id,
+                "user_type": "unrestricted",
+                "user_enabled": True,
+                "pin_code": pin,
+            }
         }
-        await self._publish(lock_names, payload)
+        await self._publish_lock(lock_name, payload)
 
-    async def _publish_clear(self, slot_id: int, lock_names: Iterable[str]) -> None:
-        """Publish clearPinCode to locks."""
+    async def _publish_clear(self, slot_id: int, lock_name: str) -> None:
+        """Publish pin_code clear/disable to a lock."""
         payload = {
-            "endpoint": self.endpoint,
-            "cluster": "closuresDoorLock",
-            "command": "clearPinCode",
-            "commandType": "functional",
-            "transaction": f"lockly-{slot_id}",
-            "payload": {"userid": slot_id},
+            "pin_code": {
+                "user": slot_id,
+                "user_type": "unrestricted",
+                "user_enabled": False,
+                "pin_code": None,
+            }
         }
-        await self._publish(lock_names, payload)
+        await self._publish_lock(lock_name, payload)
 
-    async def _publish(self, lock_names: Iterable[str], payload: dict) -> None:
-        """Publish a Zigbee2MQTT device command for each lock."""
-        topic = f"{self.mqtt_topic}/bridge/request/device/command"
-        for lock_name in lock_names:
-            command = {"id": lock_name, **payload}
+    async def _publish_lock(self, lock_name: str, payload: dict) -> None:
+        """Publish a Zigbee2MQTT per-lock set command."""
+        topic = f"{self.mqtt_topic}/{lock_name}/set"
+        if not self._hass.services.has_service("mqtt", "publish"):
+            LOGGER.error("MQTT publish service not available for topic %s", topic)
+            return
+        LOGGER.debug("MQTT publish to %s: %s", topic, payload)
+        try:
             await self._hass.services.async_call(
                 "mqtt",
                 "publish",
                 {
                     "topic": topic,
                     "qos": 1,
-                    "payload": json.dumps(command),
+                    "payload": json.dumps(payload),
                 },
                 blocking=True,
             )
+            LOGGER.debug("MQTT publish complete to %s", topic)
+        except Exception as err:  # noqa: BLE001
+            LOGGER.exception("MQTT publish failed for %s: %s", lock_name, err)
+
+    def _schedule_timeout(self, slot_id: int, timeout: int = 15) -> None:
+        """Schedule a timeout for an outstanding slot apply."""
+
+        async def _on_timeout() -> None:
+            pending_locks = self._pending_slots.pop(slot_id, None)
+            if pending_locks is None:
+                return
+            await self.update_slot(
+                slot_id,
+                busy=False,
+                last_response={
+                    "status": "timeout",
+                    "locks": sorted(pending_locks),
+                },
+                last_response_ts=time.time(),
+            )
+            self._pending_timeouts.pop(slot_id, None)
+            LOGGER.warning("MQTT response timeout for slot %s", slot_id)
+
+        handle = self._hass.loop.call_later(
+            timeout, lambda: self._hass.async_create_task(_on_timeout())
+        )
+        self._pending_timeouts[slot_id] = handle
+
+    async def handle_mqtt_action(self, lock_name: str, action: str) -> None:
+        """Handle MQTT action responses for a lock."""
+        slot_queue = self._pending_by_lock.get(lock_name)
+        if not slot_queue:
+            return
+        slot_id = slot_queue.pop(0)
+        if not slot_queue:
+            self._pending_by_lock.pop(lock_name, None)
+        pending_locks = self._pending_slots.get(slot_id)
+        if pending_locks:
+            pending_locks.discard(lock_name)
+        if action == "pin_code_deleted":
+            status = "available"
+        elif action == "pin_code_added":
+            status = "enabled"
+        else:
+            status = "unknown"
+        LOGGER.debug(
+            "Lock action for slot %s on %s: %s",
+            slot_id,
+            lock_name,
+            action,
+        )
+        await self.update_slot(
+            slot_id,
+            last_response={"lock": lock_name, "action": action, "status": status},
+            last_response_ts=time.time(),
+        )
+        if pending_locks is not None and not pending_locks:
+            self._pending_slots.pop(slot_id, None)
+            handle = self._pending_timeouts.pop(slot_id, None)
+            if handle is not None:
+                handle.cancel()
+            await self.update_slot(slot_id, busy=False)

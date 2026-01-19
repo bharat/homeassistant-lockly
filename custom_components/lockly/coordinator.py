@@ -25,6 +25,8 @@ class LocklySlot:
     pin: str = ""
     enabled: bool = False
     busy: bool = False
+    last_response: dict | None = None
+    last_response_ts: float | None = None
 
 
 class LocklySlotCoordinator(DataUpdateCoordinator[dict[int, LocklySlot]]):
