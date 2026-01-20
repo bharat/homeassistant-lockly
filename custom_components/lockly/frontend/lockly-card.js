@@ -152,8 +152,10 @@ class LocklyCard extends HTMLElement {
       `;
       return;
     }
-    const title =
-      this._config.title || this._getDefaultTitle() || DEFAULT_TITLE;
+    const hasTitle = Object.prototype.hasOwnProperty.call(this._config, "title");
+    const title = hasTitle
+      ? this._config.title || ""
+      : this._getDefaultTitle() || DEFAULT_TITLE;
     const slots = this._getSlots();
     this._card.innerHTML = `
       <style>
@@ -223,11 +225,14 @@ class LocklyCard extends HTMLElement {
           padding: 8px 16px 16px 16px;
         }
       </style>
-      <div class="header">
+      ${title
+        ? `<div class="header">
         <div class="card-header">
           <h1 class="card-header">${title}</h1>
         </div>
-      </div>
+      </div>`
+        : ""
+      }
       ${slots.length
         ? `<table class="slot-table">
               <thead>
@@ -503,6 +508,9 @@ console.info("Lockly card custom element registered");
 class LocklyCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = { ...config };
+    if (!Object.prototype.hasOwnProperty.call(this._config, "title")) {
+      this._config = { ...this._config, title: "" };
+    }
     this._render();
   }
 
@@ -638,20 +646,18 @@ class LocklyCardEditor extends HTMLElement {
           gap: 8px;
           align-items: center;
           margin-bottom: 8px;
+          min-height: 56px;
         }
         .entity-row ha-entity-picker {
           flex: 1;
+          min-width: 0;
         }
         .add-entity {
           margin-top: 8px;
         }
       </style>
       <div class="container">
-        <ha-textfield
-          class="field"
-          label="Title (optional)"
-          value="${title}"
-        ></ha-textfield>
+        <ha-textfield class="field" label="Title (optional)"></ha-textfield>
         <ha-entity-picker class="field" id="lockly-group-picker"></ha-entity-picker>
         <p class="section-desc">Select the lock group to manage.</p>
         <div class="section-title">Locks</div>
@@ -685,6 +691,7 @@ class LocklyCardEditor extends HTMLElement {
     if (groupPicker) {
       groupPicker.hass = this._hass;
       groupPicker.includeDomains = ["group"];
+      groupPicker.label = "Lock group";
       groupPicker.value = selectedGroup;
       groupPicker.addEventListener("value-changed", (ev) =>
         this._handleGroupChange(ev)
@@ -694,6 +701,7 @@ class LocklyCardEditor extends HTMLElement {
     this.querySelectorAll("ha-entity-picker").forEach((picker, index) => {
       picker.hass = this._hass;
       picker.includeDomains = ["lock"];
+      picker.label = "Lock entity";
       picker.value = lockEntities[index] || "";
       picker.addEventListener("value-changed", (ev) =>
         this._handleEntityChange(ev)
