@@ -43,7 +43,9 @@ class LocklyFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_NAME, default="Lockly"): selector.TextSelector(
+                    vol.Required(
+                        CONF_NAME, default="Lockly Configuration"
+                    ): selector.TextSelector(
                         selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
                     ),
                     vol.Required(
@@ -94,6 +96,9 @@ class LocklyOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
+            name = user_input.get(CONF_NAME, self._entry.title)
+            if name and name != self._entry.title:
+                self.hass.config_entries.async_update_entry(self._entry, title=name)
             return self.async_create_entry(
                 title="",
                 data={
@@ -108,6 +113,13 @@ class LocklyOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    vol.Optional(CONF_NAME, default=self._entry.title): (
+                        selector.TextSelector(
+                            selector.TextSelectorConfig(
+                                type=selector.TextSelectorType.TEXT
+                            )
+                        )
+                    ),
                     vol.Required(
                         CONF_MAX_SLOTS,
                         default=current.get(CONF_MAX_SLOTS, DEFAULT_MAX_SLOTS),

@@ -1,12 +1,19 @@
 const DEFAULT_TITLE = "Lockly";
 const RESOURCE_URL = import.meta.url;
 const CARD_VERSION = new URL(RESOURCE_URL).searchParams.get("v") || "0.0.0";
-// eslint-disable-next-line no-console
-console.info(`Lockly card module loaded from ${RESOURCE_URL}`);
 const WS_VERSION_TYPE = "lockly/version";
 const WS_CONFIG_TYPE = "lockly/config";
 const WS_ENTRIES_TYPE = "lockly/entries";
-const RESOURCE_LOG_KEY = "lockly_resource_logged";
+const BANNER_STYLE = [
+  "background: linear-gradient(90deg, #00c853, #2962ff)",
+  "color: #fff",
+  "padding: 2px 8px",
+  "border-radius: 4px",
+  "font-weight: 600",
+  "letter-spacing: 0.2px",
+].join(";");
+// eslint-disable-next-line no-console
+console.info(`%c Lockly Card ${CARD_VERSION} loaded`, BANNER_STYLE);
 
 class LocklyCard extends HTMLElement {
   setConfig(config) {
@@ -23,7 +30,6 @@ class LocklyCard extends HTMLElement {
     if (this._config) {
       this._render();
     }
-    this._notifyResourceLoaded();
   }
 
   connectedCallback() {
@@ -97,18 +103,6 @@ class LocklyCard extends HTMLElement {
         composed: true,
       })
     );
-  }
-
-  _notifyResourceLoaded() {
-    if (!this._hass || !this._hass.connection) {
-      return;
-    }
-    if (sessionStorage.getItem(RESOURCE_LOG_KEY)) {
-      return;
-    }
-    sessionStorage.setItem(RESOURCE_LOG_KEY, "1");
-    // eslint-disable-next-line no-console
-    console.info(`Lockly card loaded (${CARD_VERSION}) from ${RESOURCE_URL}`);
   }
 
   async _handleReload() {
@@ -299,9 +293,9 @@ class LocklyCard extends HTMLElement {
       }
       ${canEdit
         ? `<div class="footer-actions">
-        <mwc-button id="add-slot" outlined>+ Add Slot</mwc-button>
-        <mwc-button id="apply-all" outlined>Apply all</mwc-button>
-        <mwc-button id="wipe-all" outlined>Wipe</mwc-button>
+        <ha-button id="add-slot" appearance="filled" variant="brand">+ Add Slot</ha-button>
+        <ha-button id="apply-all" class="danger" appearance="filled" variant="danger">Apply all</ha-button>
+        <ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe</ha-button>
       </div>`
         : ""
       }
@@ -369,13 +363,28 @@ class LocklyCard extends HTMLElement {
       <style>
         .dialog-content {
           display: grid;
-          gap: 16px;
-          padding: 8px 0;
+          gap: 20px;
+          padding: 16px 0;
         }
         .switch-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
+        }
+        ha-button[slot="secondaryAction"],
+        ha-button[slot="primaryAction"] {
+          margin-inline-start: 8px;
+          min-width: 92px;
+        }
+        .danger {
+          --ha-button-primary-color: var(--ha-color-fill-danger-loud-resting);
+          --ha-button-border-color: var(--ha-color-fill-danger-loud-resting);
+          --ha-button-background-color: var(--ha-color-fill-danger-loud-resting);
+          --ha-button-text-color: var(--ha-color-on-danger-loud, #fff);
+          --mdc-theme-primary: var(--ha-color-fill-danger-loud-resting);
+          --mdc-theme-on-primary: var(--ha-color-on-danger-loud, #fff);
+          --md-sys-color-primary: var(--ha-color-fill-danger-loud-resting);
+          --md-sys-color-on-primary: var(--ha-color-on-danger-loud, #fff);
         }
       </style>
       <div class="dialog-content">
@@ -386,20 +395,25 @@ class LocklyCard extends HTMLElement {
           type="text"
           inputmode="numeric"
           pattern="[0-9]*"
+          maxlength="8"
         ></ha-textfield>
         <div class="switch-row">
           <span>Enabled</span>
           <ha-switch id="lockly-slot-enabled"></ha-switch>
         </div>
       </div>
-      <mwc-button slot="secondaryAction" id="lockly-slot-delete" class="danger"
-        >Delete</mwc-button
+      <ha-button
+        slot="secondaryAction"
+        id="lockly-slot-delete"
+        class="danger"
+        appearance="filled"
+        variant="danger"
+      >Delete</ha-button>
+      <ha-button slot="secondaryAction" id="lockly-slot-cancel" appearance="outlined"
+        >Cancel</ha-button
       >
-      <mwc-button slot="secondaryAction" id="lockly-slot-cancel"
-        >Cancel</mwc-button
-      >
-      <mwc-button slot="primaryAction" id="lockly-slot-save" outlined
-        >Apply</mwc-button
+      <ha-button slot="primaryAction" id="lockly-slot-save" appearance="filled"
+        >Apply</ha-button
       >
     `;
     this._dialog.addEventListener("closed", () => {
@@ -433,6 +447,7 @@ class LocklyCard extends HTMLElement {
     }
     if (pinField) {
       pinField.value = slot.pin || "";
+      this._setPinError(pinField, "");
     }
     if (enabledField) {
       enabledField.checked = Boolean(slot.enabled);
@@ -448,7 +463,18 @@ class LocklyCard extends HTMLElement {
     const pinField = this._dialog.querySelector("#lockly-slot-pin");
     const enabledField = this._dialog.querySelector("#lockly-slot-enabled");
     const name = nameField ? nameField.value : "";
-    const pin = pinField ? pinField.value : "";
+    const pin = pinField ? pinField.value.trim() : "";
+    if (!pin || !/^\d{4,8}$/.test(pin)) {
+      if (pinField) {
+        this._setPinError(pinField, "Error: PIN must be 4-8 digits.");
+        pinField.reportValidity?.();
+        pinField.focus?.();
+      }
+      return;
+    }
+    if (pinField) {
+      this._setPinError(pinField, "");
+    }
     const enabled = enabledField ? enabledField.checked : false;
     try {
       await this._hass.callService("lockly", "update_slot", {
@@ -519,6 +545,11 @@ class LocklyCard extends HTMLElement {
     }
     return DEFAULT_TITLE;
   }
+
+  _setPinError(pinField, message) {
+    pinField.invalid = Boolean(message);
+    pinField.errorMessage = message || "";
+  }
 }
 
 LocklyCard.getConfigElement = () => document.createElement("lockly-card-editor");
@@ -534,8 +565,6 @@ LocklyCard.prototype.getConfigElement = LocklyCard.getConfigElement;
 if (!customElements.get("lockly-card")) {
   customElements.define("lockly-card", LocklyCard);
 }
-// eslint-disable-next-line no-console
-console.info("Lockly card custom element registered");
 
 class LocklyCardEditor extends HTMLElement {
   setConfig(config) {
@@ -549,6 +578,7 @@ class LocklyCardEditor extends HTMLElement {
     if (!Object.prototype.hasOwnProperty.call(this._config, "dry_run")) {
       this._config = { ...this._config, dry_run: false };
     }
+    this._needsRender = true;
     this._render();
   }
 
@@ -558,7 +588,13 @@ class LocklyCardEditor extends HTMLElement {
       this._entriesLoaded = true;
       this._loadEntries();
     }
-    this._render();
+    const form = this.querySelector("#lockly-entities-form");
+    if (form) {
+      form.hass = this._hass;
+    }
+    if (this._needsRender || !this._rendered) {
+      this._render();
+    }
   }
 
   get value() {
@@ -580,6 +616,7 @@ class LocklyCardEditor extends HTMLElement {
         };
         this._emitConfigChanged();
       }
+      this._needsRender = true;
       this._render();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -594,7 +631,6 @@ class LocklyCardEditor extends HTMLElement {
     }
     this._config = { ...this._config, entry_id: entryId };
     this._emitConfigChanged();
-    this._render();
   }
 
 
@@ -604,8 +640,6 @@ class LocklyCardEditor extends HTMLElement {
     this._config = { ...this._config, title };
     this._emitConfigChanged();
   }
-
-
 
   _emitConfigChanged() {
     this.dispatchEvent(
@@ -621,6 +655,8 @@ class LocklyCardEditor extends HTMLElement {
     if (!this._hass) {
       return;
     }
+    this._needsRender = false;
+    this._rendered = true;
     const entries = this._entries || [];
     const selected = this._config?.entry_id || "";
     const title = this._config?.title || "";
@@ -759,8 +795,6 @@ class LocklyCardEditor extends HTMLElement {
 if (!customElements.get("lockly-card-editor")) {
   customElements.define("lockly-card-editor", LocklyCardEditor);
 }
-// eslint-disable-next-line no-console
-console.info("Lockly card editor custom element registered");
 
 window.customCards = window.customCards || [];
 if (!window.customCards.find((card) => card.type === "lockly-card")) {

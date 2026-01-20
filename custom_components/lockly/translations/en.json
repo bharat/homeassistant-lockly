@@ -19,6 +19,7 @@
             "init": {
                 "title": "Lockly Options",
                 "data": {
+                    "name": "Integration entry name",
                     "max_slots": "Maximum slots",
                     "mqtt_topic": "Zigbee2MQTT base topic",
                     "endpoint": "Zigbee endpoint"
