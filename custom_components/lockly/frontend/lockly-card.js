@@ -72,8 +72,7 @@ class LocklyCard extends HTMLElement {
         type: WS_CONFIG_TYPE,
         entry_id: this._config.entry_id,
       });
-      this._groupEntityId = response?.group_entity_id || null;
-      this._groupName = response?.group_name || null;
+      this._entryTitle = response?.title || null;
       this._render();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -156,6 +155,11 @@ class LocklyCard extends HTMLElement {
     const title = hasTitle
       ? this._config.title || ""
       : this._getDefaultTitle() || DEFAULT_TITLE;
+    const adminOnly = Boolean(this._config?.admin_only);
+    const isAdmin = Boolean(this._hass?.user?.is_admin);
+    const canEdit = !adminOnly || isAdmin;
+    const showPin = canEdit;
+    this._canEdit = canEdit;
     const slots = this._getSlots();
     this._card.innerHTML = `
       <style>
@@ -210,6 +214,10 @@ class LocklyCard extends HTMLElement {
           box-shadow: inset 0 0 0 9999px rgba(0, 0, 0, 0.04);
           cursor: pointer;
         }
+        .slot-table.readonly .slot-row:hover td {
+          box-shadow: none;
+          cursor: default;
+        }
         .busy {
           opacity: 0.6;
           pointer-events: none;
@@ -234,7 +242,7 @@ class LocklyCard extends HTMLElement {
         : ""
       }
       ${slots.length
-        ? `<table class="slot-table">
+        ? `<table class="slot-table ${canEdit ? "" : "readonly"}">
               <thead>
                 <tr>
                   <th>Slot</th>
@@ -251,7 +259,8 @@ class LocklyCard extends HTMLElement {
               } ${slot.busy ? "busy" : ""}" data-slot="${slot.id}">
                     <td>${slot.id}</td>
                     <td>${slot.name}</td>
-                    <td>${slot.pin ? "****" : ""}</td>
+                    <td>${showPin ? slot.pin : slot.pin ? "****" : ""
+              }</td>
                     <td>${slot.enabled ? "Yes" : "No"}</td>
                   </tr>
                 `
@@ -261,19 +270,25 @@ class LocklyCard extends HTMLElement {
             </table>`
         : `<div class="empty">No slots yet. Use “Add slot” to create one.</div>`
       }
-      <div class="footer-actions">
+      ${canEdit
+        ? `<div class="footer-actions">
         <mwc-button id="add-slot" outlined>+ Add Slot</mwc-button>
         <mwc-button id="apply-all" outlined>Apply all</mwc-button>
         <mwc-button id="wipe-all" outlined>Wipe</mwc-button>
-      </div>
+      </div>`
+        : ""
+      }
     `;
     this._attachHandlers();
   }
 
   _attachHandlers() {
+    const canEdit = Boolean(this._canEdit);
+    const dryRun = Boolean(this._config?.dry_run);
     this._card.querySelector("#add-slot")?.addEventListener("click", () => {
       this._hass.callService("lockly", "add_slot", {
         entry_id: this._config.entry_id,
+        dry_run: dryRun,
       });
     });
     this._card.querySelector("#apply-all")?.addEventListener("click", () => {
@@ -282,7 +297,7 @@ class LocklyCard extends HTMLElement {
           "Apply all enabled slots to the selected locks? Disabled slots are skipped."
         )
       ) {
-        const data = { entry_id: this._config.entry_id };
+        const data = { entry_id: this._config.entry_id, dry_run: dryRun };
         const lockEntities = this._getLockEntityOverrides();
         if (lockEntities) {
           data.lock_entities = lockEntities;
@@ -296,7 +311,7 @@ class LocklyCard extends HTMLElement {
           "Remove all slots and clear their PINs from the selected locks? This cannot be undone."
         )
       ) {
-        const data = { entry_id: this._config.entry_id };
+        const data = { entry_id: this._config.entry_id, dry_run: dryRun };
         const lockEntities = this._getLockEntityOverrides();
         if (lockEntities) {
           data.lock_entities = lockEntities;
@@ -304,15 +319,17 @@ class LocklyCard extends HTMLElement {
         this._hass.callService("lockly", "wipe_slots", data);
       }
     });
-    this._card.querySelectorAll("tbody tr[data-slot]").forEach((row) => {
-      row.addEventListener("click", () => {
-        const slotId = Number(row.getAttribute("data-slot"));
-        const slot = this._getSlots().find((item) => item.id === slotId);
-        if (slot) {
-          this._openEditor(slot);
-        }
+    if (canEdit) {
+      this._card.querySelectorAll("tbody tr[data-slot]").forEach((row) => {
+        row.addEventListener("click", () => {
+          const slotId = Number(row.getAttribute("data-slot"));
+          const slot = this._getSlots().find((item) => item.id === slotId);
+          if (slot) {
+            this._openEditor(slot);
+          }
+        });
       });
-    });
+    }
   }
 
   _ensureDialog() {
@@ -376,6 +393,9 @@ class LocklyCard extends HTMLElement {
   }
 
   _openEditor(slot) {
+    if (!this._canEdit) {
+      return;
+    }
     this._ensureDialog();
     this._editingSlotId = slot.id;
     const nameField = this._dialog.querySelector("#lockly-slot-name");
@@ -419,6 +439,7 @@ class LocklyCard extends HTMLElement {
     const applyData = {
       entry_id: this._config.entry_id,
       slot: this._editingSlotId,
+      dry_run: Boolean(this._config?.dry_run),
     };
     const lockEntities = this._getLockEntityOverrides();
     if (lockEntities) {
@@ -442,6 +463,7 @@ class LocklyCard extends HTMLElement {
       const data = {
         entry_id: this._config.entry_id,
         slot: this._editingSlotId,
+        dry_run: Boolean(this._config?.dry_run),
       };
       const lockEntities = this._getLockEntityOverrides();
       if (lockEntities) {
@@ -465,29 +487,10 @@ class LocklyCard extends HTMLElement {
     if (!this._hass) {
       return null;
     }
-    if (this._groupEntityId) {
-      const groupState = this._hass.states[this._groupEntityId];
-      const groupName =
-        groupState?.attributes?.friendly_name || this._groupEntityId;
-      return `Managing ${groupName}`;
+    if (this._entryTitle) {
+      return this._entryTitle;
     }
-    if (this._groupName) {
-      return `Managing ${this._groupName}`;
-    }
-    const states = Object.values(this._hass.states || {});
-    const slotEntity = states.find(
-      (state) =>
-        state.attributes &&
-        state.attributes.lockly_entry_id === this._config.entry_id &&
-        state.attributes.lockly_group_entity
-    );
-    const groupEntityId = slotEntity?.attributes?.lockly_group_entity;
-    if (!groupEntityId) {
-      return null;
-    }
-    const groupState = this._hass.states[groupEntityId];
-    const groupName = groupState?.attributes?.friendly_name || groupEntityId;
-    return `Managing ${groupName}`;
+    return DEFAULT_TITLE;
   }
 }
 
@@ -496,6 +499,8 @@ LocklyCard.getStubConfig = () => ({
   title: "",
   entry_id: "",
   lock_entities: [],
+  admin_only: false,
+  dry_run: false,
 });
 LocklyCard.prototype.getConfigElement = LocklyCard.getConfigElement;
 
@@ -510,6 +515,12 @@ class LocklyCardEditor extends HTMLElement {
     this._config = { ...config };
     if (!Object.prototype.hasOwnProperty.call(this._config, "title")) {
       this._config = { ...this._config, title: "" };
+    }
+    if (!Object.prototype.hasOwnProperty.call(this._config, "admin_only")) {
+      this._config = { ...this._config, admin_only: false };
+    }
+    if (!Object.prototype.hasOwnProperty.call(this._config, "dry_run")) {
+      this._config = { ...this._config, dry_run: false };
     }
     this._render();
   }
@@ -535,6 +546,13 @@ class LocklyCardEditor extends HTMLElement {
       this._entries = await this._hass.connection.sendMessagePromise({
         type: WS_ENTRIES_TYPE,
       });
+      if (!this._config?.entry_id && this._entries?.length === 1) {
+        this._config = {
+          ...this._config,
+          entry_id: this._entries[0].entry_id,
+        };
+        this._emitConfigChanged();
+      }
       this._render();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -542,22 +560,17 @@ class LocklyCardEditor extends HTMLElement {
     }
   }
 
-  _handleGroupChange(ev) {
-    const groupEntityId = ev.detail?.value ?? ev.target?.value ?? "";
-    if (!groupEntityId) {
+  _handleEntryChange(ev) {
+    const entryId = ev.detail?.value ?? ev.target?.value ?? "";
+    if (!entryId || entryId === this._config?.entry_id) {
       return;
     }
-    const entries = this._entries || [];
-    const entry = entries.find(
-      (item) => item.group_entity_id === groupEntityId
-    );
-    if (!entry || entry.entry_id === this._config?.entry_id) {
-      return;
-    }
-    this._config = { ...this._config, entry_id: entry.entry_id };
+    this._config = { ...this._config, entry_id: entryId };
     this._emitConfigChanged();
     this._render();
   }
+
+
 
   _handleTitleChange(ev) {
     const title = ev.target?.value ?? "";
@@ -565,43 +578,7 @@ class LocklyCardEditor extends HTMLElement {
     this._emitConfigChanged();
   }
 
-  _handleEntityChange(ev) {
-    const index = Number(ev.target?.dataset?.index);
-    if (Number.isNaN(index)) {
-      return;
-    }
-    const value = ev.detail?.value ?? ev.target?.value ?? "";
-    const entities = Array.isArray(this._config?.lock_entities)
-      ? [...this._config.lock_entities]
-      : [];
-    entities[index] = value;
-    this._config = { ...this._config, lock_entities: entities };
-    this._emitConfigChanged();
-  }
 
-  _addEntity() {
-    const entities = Array.isArray(this._config?.lock_entities)
-      ? [...this._config.lock_entities]
-      : [];
-    entities.push("");
-    this._config = { ...this._config, lock_entities: entities };
-    this._emitConfigChanged();
-    this._render();
-  }
-
-  _removeEntity(ev) {
-    const index = Number(ev.target?.dataset?.index);
-    if (Number.isNaN(index)) {
-      return;
-    }
-    const entities = Array.isArray(this._config?.lock_entities)
-      ? [...this._config.lock_entities]
-      : [];
-    entities.splice(index, 1);
-    this._config = { ...this._config, lock_entities: entities };
-    this._emitConfigChanged();
-    this._render();
-  }
 
   _emitConfigChanged() {
     this.dispatchEvent(
@@ -619,12 +596,29 @@ class LocklyCardEditor extends HTMLElement {
     }
     const entries = this._entries || [];
     const selected = this._config?.entry_id || "";
-    const selectedEntry = entries.find((entry) => entry.entry_id === selected);
-    const selectedGroup = selectedEntry?.group_entity_id || "";
     const title = this._config?.title || "";
+    const adminOnly = Boolean(this._config?.admin_only);
+    const dryRun = Boolean(this._config?.dry_run);
     const lockEntities = Array.isArray(this._config?.lock_entities)
       ? this._config.lock_entities
       : [];
+    const entrySelect =
+      entries.length > 1
+        ? `
+          <ha-select class="field" label="Lockly instance">
+            ${entries
+          .map((entry) => {
+            const label = entry.title || entry.entry_id;
+            const isSelected = entry.entry_id === selected ? "selected" : "";
+            return `<mwc-list-item value="${entry.entry_id}" ${isSelected}>
+                    ${label}
+                  </mwc-list-item>`;
+          })
+          .join("")}
+          </ha-select>
+          <p class="section-desc">Select which Lockly instance to use.</p>
+        `
+        : "";
     this.innerHTML = `
       <style>
         .container {
@@ -632,6 +626,7 @@ class LocklyCardEditor extends HTMLElement {
         }
         .field {
           margin-bottom: 16px;
+          width: 100%;
         }
         .section-title {
           font-weight: 600;
@@ -641,45 +636,37 @@ class LocklyCardEditor extends HTMLElement {
           color: var(--secondary-text-color);
           margin: 0 0 12px 0;
         }
-        .entity-row {
+        .toggle-stack {
           display: flex;
-          gap: 8px;
+          flex-direction: column;
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+        .toggle-stack ha-formfield {
+          display: flex;
           align-items: center;
-          margin-bottom: 8px;
-          min-height: 56px;
+          gap: 12px;
         }
-        .entity-row ha-entity-picker {
-          flex: 1;
-          min-width: 0;
-        }
-        .add-entity {
-          margin-top: 8px;
+        ha-form {
+          display: block;
         }
       </style>
       <div class="container">
         <ha-textfield class="field" label="Title (optional)"></ha-textfield>
-        <ha-entity-picker class="field" id="lockly-group-picker"></ha-entity-picker>
-        <p class="section-desc">Select the lock group to manage.</p>
+        ${entrySelect}
+        <div class="toggle-stack">
+          <ha-formfield label="Only admins can see PINs and edit">
+            <ha-switch id="lockly-admin-only"></ha-switch>
+          </ha-formfield>
+          <ha-formfield label="Simulation mode (no MQTT)">
+            <ha-switch id="lockly-dry-run"></ha-switch>
+          </ha-formfield>
+        </div>
         <div class="section-title">Locks</div>
         <p class="section-desc">
-          Optional: override the configured lock group by selecting specific
-          lock entities.
+          Add locks or lock groups that this card will manage.
         </p>
-        ${lockEntities
-        .map(
-          (entity, index) => `
-              <div class="entity-row">
-                <ha-entity-picker data-index="${index}"></ha-entity-picker>
-                <ha-icon-button
-                  data-index="${index}"
-                  icon="mdi:close"
-                  label="Remove"
-                ></ha-icon-button>
-              </div>
-            `
-        )
-        .join("")}
-        <mwc-button class="add-entity" outlined>Add entity</mwc-button>
+        <ha-form id="lockly-entities-form"></ha-form>
       </div>
     `;
     const titleField = this.querySelector("ha-textfield");
@@ -687,33 +674,58 @@ class LocklyCardEditor extends HTMLElement {
       titleField.value = title;
       titleField.addEventListener("change", (ev) => this._handleTitleChange(ev));
     }
-    const groupPicker = this.querySelector("#lockly-group-picker");
-    if (groupPicker) {
-      groupPicker.hass = this._hass;
-      groupPicker.includeDomains = ["group"];
-      groupPicker.label = "Lock group";
-      groupPicker.value = selectedGroup;
-      groupPicker.addEventListener("value-changed", (ev) =>
-        this._handleGroupChange(ev)
+    const select = this.querySelector("ha-select");
+    if (select) {
+      if (selected) {
+        select.value = selected;
+      }
+      select.addEventListener("value-changed", (ev) =>
+        this._handleEntryChange(ev)
       );
-      groupPicker.addEventListener("change", (ev) => this._handleGroupChange(ev));
+      select.addEventListener("selected", (ev) => this._handleEntryChange(ev));
+      select.addEventListener("change", (ev) => this._handleEntryChange(ev));
     }
-    this.querySelectorAll("ha-entity-picker").forEach((picker, index) => {
-      picker.hass = this._hass;
-      picker.includeDomains = ["lock"];
-      picker.label = "Lock entity";
-      picker.value = lockEntities[index] || "";
-      picker.addEventListener("value-changed", (ev) =>
-        this._handleEntityChange(ev)
-      );
-      picker.addEventListener("change", (ev) => this._handleEntityChange(ev));
-    });
-    this.querySelectorAll("ha-icon-button").forEach((button) => {
-      button.addEventListener("click", (ev) => this._removeEntity(ev));
-    });
-    this.querySelector(".add-entity")?.addEventListener("click", () => {
-      this._addEntity();
-    });
+    const adminSwitch = this.querySelector("#lockly-admin-only");
+    if (adminSwitch) {
+      adminSwitch.checked = adminOnly;
+      adminSwitch.addEventListener("change", (ev) => {
+        this._config = { ...this._config, admin_only: ev.target?.checked };
+        this._emitConfigChanged();
+      });
+    }
+    const dryRunSwitch = this.querySelector("#lockly-dry-run");
+    if (dryRunSwitch) {
+      dryRunSwitch.checked = dryRun;
+      dryRunSwitch.addEventListener("change", (ev) => {
+        this._config = { ...this._config, dry_run: ev.target?.checked };
+        this._emitConfigChanged();
+      });
+    }
+    const form = this.querySelector("#lockly-entities-form");
+    if (form) {
+      form.hass = this._hass;
+      form.schema = [
+        {
+          name: "lock_entities",
+          selector: {
+            entity: {
+              multiple: true,
+              domain: ["lock", "group"],
+            },
+          },
+        },
+      ];
+      form.data = { lock_entities: lockEntities };
+      form.computeLabel = () => "Locks";
+      form.addEventListener("value-changed", (ev) => {
+        const value = ev.detail?.value || {};
+        this._config = {
+          ...this._config,
+          lock_entities: value.lock_entities || [],
+        };
+        this._emitConfigChanged();
+      });
+    }
   }
 }
 
@@ -722,13 +734,6 @@ if (!customElements.get("lockly-card-editor")) {
 }
 // eslint-disable-next-line no-console
 console.info("Lockly card editor custom element registered");
-
-LocklyCard.getConfigElement = () => document.createElement("lockly-card-editor");
-LocklyCard.getStubConfig = () => ({
-  title: "",
-  entry_id: "",
-  lock_entities: [],
-});
 
 window.customCards = window.customCards || [];
 if (!window.customCards.find((card) => card.type === "lockly-card")) {

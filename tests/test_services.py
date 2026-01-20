@@ -18,7 +18,6 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.lockly.const import (
     CONF_ENDPOINT,
-    CONF_LOCK_GROUP_ENTITY,
     CONF_MAX_SLOTS,
     CONF_MQTT_TOPIC,
     DEFAULT_ENDPOINT,
@@ -40,18 +39,12 @@ async def _setup_entry(
         title="Lockly",
         data={
             CONF_NAME: "Lockly",
-            CONF_LOCK_GROUP_ENTITY: "group.lockly_locks",
             CONF_MAX_SLOTS: DEFAULT_MAX_SLOTS,
             CONF_MQTT_TOPIC: DEFAULT_MQTT_TOPIC,
             CONF_ENDPOINT: DEFAULT_ENDPOINT,
         },
     )
     entry.add_to_hass(hass)
-    hass.states.async_set(
-        "group.lockly_locks",
-        "on",
-        {"entity_id": ["lock.garden_upper_lock"]},
-    )
     hass.states.async_set(
         "lock.garden_upper_lock",
         "locked",
@@ -78,7 +71,14 @@ async def test_apply_slot_publishes_mqtt(
     await manager.update_slot(1, name="Guest", pin="1234", enabled=True)
 
     await hass.services.async_call(
-        DOMAIN, "apply_slot", {"entry_id": entry.entry_id, "slot": 1}, blocking=True
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
     )
     assert len(mqtt_calls) == 1
     payload = json.loads(mqtt_calls[0].data["payload"])
@@ -103,5 +103,40 @@ async def test_apply_slot_rejects_invalid_pin(
         await manager.update_slot(1, name="Guest", pin="12", enabled=True)
 
     await hass.services.async_call(
-        DOMAIN, "apply_slot", {"entry_id": entry.entry_id, "slot": 1}, blocking=True
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
     )
+
+
+@pytest.mark.enable_socket
+async def test_apply_slot_dry_run_skips_mqtt(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test dry_run apply does not publish MQTT."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
+
+    await hass.services.async_call(
+        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.update_slot(1, name="Guest", pin="1234", enabled=True)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["lock.garden_upper_lock"],
+            "dry_run": True,
+        },
+        blocking=True,
+    )
+    assert len(mqtt_calls) == 0

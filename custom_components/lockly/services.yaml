@@ -19,8 +19,11 @@ remove_slot:
       required: false
       selector:
         entity:
-          domain: lock
           multiple: true
+    dry_run:
+      required: false
+      selector:
+        boolean:
     slot:
       required: true
       selector:
@@ -41,8 +44,11 @@ apply_slot:
       required: false
       selector:
         entity:
-          domain: lock
           multiple: true
+    dry_run:
+      required: false
+      selector:
+        boolean:
     slot:
       required: true
       selector:
@@ -79,8 +85,11 @@ apply_all:
       required: false
       selector:
         entity:
-          domain: lock
           multiple: true
+    dry_run:
+      required: false
+      selector:
+        boolean:
 
 update_slot:
   name: Update Slot
@@ -122,8 +131,11 @@ wipe_slots:
       required: false
       selector:
         entity:
-          domain: lock
           multiple: true
+    dry_run:
+      required: false
+      selector:
+        boolean:
     slots:
       required: false
       selector:

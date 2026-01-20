@@ -133,6 +133,30 @@ class LocklyManager:
             names.append(entity_id)
         return names
 
+    def _expand_lock_entity_ids(self, entity_ids: Iterable[str]) -> list[str]:
+        """Expand lock entity ids, resolving groups to lock entities."""
+        expanded: list[str] = []
+        for entity_id in entity_ids:
+            if not entity_id:
+                continue
+            if entity_id.startswith("group."):
+                group_state = self._hass.states.get(entity_id)
+                members = (
+                    group_state.attributes.get("entity_id", []) if group_state else []
+                )
+                if isinstance(members, str):
+                    members = [members]
+                expanded.extend(
+                    [
+                        member
+                        for member in members
+                        if isinstance(member, str) and member.startswith("lock.")
+                    ]
+                )
+                continue
+            expanded.append(entity_id)
+        return expanded
+
     @property
     def max_slots(self) -> int:
         """Maximum slots configured."""
@@ -221,13 +245,22 @@ class LocklyManager:
         return slot
 
     async def remove_slot(
-        self, slot_id: int, *, lock_entities: Iterable[str] | None = None
+        self,
+        slot_id: int,
+        *,
+        lock_entities: Iterable[str] | None = None,
+        dry_run: bool = False,
     ) -> None:
         """Remove a slot and clear it from locks."""
         if slot_id not in self._coordinator.data:
             message = SLOT_NOT_FOUND
             raise ServiceValidationError(message)
-        await self.apply_slot(slot_id, force_clear=True, lock_entities=lock_entities)
+        await self.apply_slot(
+            slot_id,
+            force_clear=True,
+            lock_entities=lock_entities,
+            dry_run=dry_run,
+        )
         self._coordinator.data.pop(slot_id, None)
         await self._save()
         await self._remove_entities_for_slot(slot_id)
@@ -296,6 +329,7 @@ class LocklyManager:
         *,
         force_clear: bool = False,
         lock_entities: Iterable[str] | None = None,
+        dry_run: bool = False,
     ) -> None:
         """Apply a slot to all locks."""
         if slot_id not in self._coordinator.data:
@@ -305,7 +339,7 @@ class LocklyManager:
         if lock_entities is None:
             lock_names = self.lock_names
         else:
-            entity_ids = [entity for entity in lock_entities if entity]
+            entity_ids = self._expand_lock_entity_ids(lock_entities)
             lock_names = self._resolve_lock_names_from_entities(entity_ids)
         if not lock_names:
             message = NO_LOCKS_CONFIGURED
@@ -321,6 +355,14 @@ class LocklyManager:
             message = INVALID_PIN
             raise ServiceValidationError(message)
         await self.update_slot(slot_id, busy=True)
+        if dry_run:
+            await self.update_slot(
+                slot_id,
+                busy=False,
+                last_response={"status": "simulated"},
+                last_response_ts=time.time(),
+            )
+            return
         pending_locks = set(lock_names)
         self._pending_slots[slot_id] = pending_locks
         for lock_name in lock_names:
@@ -335,16 +377,19 @@ class LocklyManager:
             return
         self._schedule_timeout(slot_id)
 
-    async def apply_all(self, *, lock_entities: Iterable[str] | None = None) -> None:
+    async def apply_all(
+        self, *, lock_entities: Iterable[str] | None = None, dry_run: bool = False
+    ) -> None:
         """Apply all slots."""
         for slot_id in sorted(self._coordinator.data):
-            await self.apply_slot(slot_id, lock_entities=lock_entities)
+            await self.apply_slot(slot_id, lock_entities=lock_entities, dry_run=dry_run)
 
     async def wipe_slots(
         self,
         slot_ids: Iterable[int] | None = None,
         *,
         lock_entities: Iterable[str] | None = None,
+        dry_run: bool = False,
     ) -> None:
         """Wipe all slots or a subset."""
         targets = (
@@ -352,7 +397,9 @@ class LocklyManager:
         )
         for slot_id in targets:
             if slot_id in self._coordinator.data:
-                await self.remove_slot(slot_id, lock_entities=lock_entities)
+                await self.remove_slot(
+                    slot_id, lock_entities=lock_entities, dry_run=dry_run
+                )
 
     async def _publish_set(self, slot_id: int, pin: str, lock_name: str) -> None:
         """Publish pin_code set to a lock."""

@@ -15,8 +15,6 @@ from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 
 from .const import (
-    CONF_LOCK_GROUP_ENTITY,
-    CONF_LOCK_GROUP_NAME,
     DOMAIN,
     INTEGRATION_VERSION,
     LOGGER,
@@ -50,6 +48,7 @@ SERVICE_SCHEMA_ENTRY = vol.Schema(
     {
         vol.Required("entry_id"): cv.string,
         vol.Optional("lock_entities"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("dry_run"): cv.boolean,
     }
 )
 SERVICE_SCHEMA_SLOT = vol.Schema(
@@ -57,12 +56,14 @@ SERVICE_SCHEMA_SLOT = vol.Schema(
         vol.Required("entry_id"): cv.string,
         vol.Required("slot"): vol.Coerce(int),
         vol.Optional("lock_entities"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("dry_run"): cv.boolean,
     }
 )
 SERVICE_SCHEMA_WIPE = vol.Schema(
     {
         vol.Required("entry_id"): cv.string,
         vol.Optional("lock_entities"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("dry_run"): cv.boolean,
         vol.Optional("slots"): vol.Any(
             cv.string, vol.All(cv.ensure_list, [vol.Coerce(int)])
         ),
@@ -119,12 +120,10 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
             connection.send_error(msg["id"], ENTRY_NOT_FOUND, "Entry not found")
             return
         entry = runtime.coordinator.config_entry
-        data = entry.options or entry.data
         connection.send_result(
             msg["id"],
             {
-                "group_entity_id": data.get(CONF_LOCK_GROUP_ENTITY),
-                "group_name": data.get(CONF_LOCK_GROUP_NAME),
+                "title": entry.title,
             },
         )
 
@@ -143,17 +142,13 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
         msg: dict,
     ) -> None:
         """Return Lockly config entries for the card editor."""
-        entries = []
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            data = entry.options or entry.data
-            entries.append(
-                {
-                    "entry_id": entry.entry_id,
-                    "title": entry.title,
-                    "group_entity_id": data.get(CONF_LOCK_GROUP_ENTITY),
-                    "group_name": data.get(CONF_LOCK_GROUP_NAME),
-                }
-            )
+        entries = [
+            {
+                "entry_id": entry.entry_id,
+                "title": entry.title,
+            }
+            for entry in hass.config_entries.async_entries(DOMAIN)
+        ]
         connection.send_result(msg["id"], entries)
 
     websocket_api.async_register_command(hass, websocket_list_entries)
@@ -184,24 +179,33 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
     async def _handle_remove_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
         await manager.remove_slot(
-            call.data["slot"], lock_entities=call.data.get("lock_entities")
+            call.data["slot"],
+            lock_entities=call.data.get("lock_entities"),
+            dry_run=call.data.get("dry_run", False),
         )
 
     async def _handle_apply_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
         await manager.apply_slot(
-            call.data["slot"], lock_entities=call.data.get("lock_entities")
+            call.data["slot"],
+            lock_entities=call.data.get("lock_entities"),
+            dry_run=call.data.get("dry_run", False),
         )
 
     async def _handle_push_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
         await manager.apply_slot(
-            call.data["slot"], lock_entities=call.data.get("lock_entities")
+            call.data["slot"],
+            lock_entities=call.data.get("lock_entities"),
+            dry_run=call.data.get("dry_run", False),
         )
 
     async def _handle_apply_all(call: ServiceCall) -> None:
         manager = await _get_manager(call)
-        await manager.apply_all(lock_entities=call.data.get("lock_entities"))
+        await manager.apply_all(
+            lock_entities=call.data.get("lock_entities"),
+            dry_run=call.data.get("dry_run", False),
+        )
 
     async def _handle_update_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
@@ -217,7 +221,11 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
         slots = call.data.get("slots")
         if isinstance(slots, str):
             slots = [int(item.strip()) for item in slots.split(",") if item.strip()]
-        await manager.wipe_slots(slots, lock_entities=call.data.get("lock_entities"))
+        await manager.wipe_slots(
+            slots,
+            lock_entities=call.data.get("lock_entities"),
+            dry_run=call.data.get("dry_run", False),
+        )
 
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_SLOT, _handle_add_slot, schema=SERVICE_SCHEMA_ENTRY

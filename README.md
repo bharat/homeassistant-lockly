@@ -21,8 +21,7 @@ Zigbee2MQTT lock slots across one or more locks.
 ## Configuration
 
 1. Go to Settings > Devices & Services and add the Lockly integration.
-2. Create a lock group and pick locks using the entity picker.
-3. Set the maximum number of slots, MQTT base topic, and endpoint.
+2. Set the maximum number of slots, MQTT base topic, and update endpoint.
 
 ## Lovelace Card
 
@@ -32,13 +31,19 @@ Zigbee2MQTT lock slots across one or more locks.
 type: custom:lockly-card
 entry_id: YOUR_ENTRY_ID
 title: Lockly
+lock_entities:
+  - lock.front_door
+  - group.downstairs_locks
+admin_only: true
+dry_run: true
 ```
 
 To find the entry ID, open the Lockly integration in Settings > Devices & Services
 and copy the entry ID from the browser URL.
 
-In the visual editor, you can optionally override the configured lock group by
-selecting specific lock entities.
+In the visual editor, add the locks or lock groups that this card should manage.
+Enable "Only admins can see PINs and edit" to restrict edits and PIN visibility.
+Enable "Simulation mode (no MQTT)" to test the UI without touching locks.
 
 ### Resource registration
 
