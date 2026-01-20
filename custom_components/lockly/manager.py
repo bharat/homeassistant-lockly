@@ -192,7 +192,7 @@ class LocklyManager:
                 {
                     "slot": slot.slot,
                     "name": slot.name,
-                    "pin": slot.pin,
+                    "pin": "***" if slot.pin else "",
                     "enabled": slot.enabled,
                     "busy": slot.busy,
                 }
@@ -268,7 +268,7 @@ class LocklyManager:
             "Updated slot %s (name=%s, pin=%s, enabled=%s, busy=%s)",
             slot_id,
             slot.name,
-            slot.pin,
+            "***" if slot.pin else "",
             slot.enabled,
             slot.busy,
         )
@@ -367,7 +367,16 @@ class LocklyManager:
         if not self._hass.services.has_service("mqtt", "publish"):
             LOGGER.error("MQTT publish service not available for topic %s", topic)
             return
-        LOGGER.debug("MQTT publish to %s: %s", topic, payload)
+        safe_payload = payload
+        if isinstance(payload, dict) and "pin_code" in payload:
+            safe_payload = {
+                **payload,
+                "pin_code": {
+                    **payload["pin_code"],
+                    "pin_code": "***",
+                },
+            }
+        LOGGER.debug("MQTT publish to %s: %s", topic, safe_payload)
         try:
             await self._hass.services.async_call(
                 "mqtt",
@@ -389,6 +398,13 @@ class LocklyManager:
         async def _on_timeout() -> None:
             pending_locks = self._pending_slots.pop(slot_id, None)
             if pending_locks is None:
+                return
+            if slot_id not in self._coordinator.data:
+                LOGGER.debug(
+                    "MQTT response timeout for slot %s ignored (slot removed)",
+                    slot_id,
+                )
+                self._pending_timeouts.pop(slot_id, None)
                 return
             await self.update_slot(
                 slot_id,
@@ -430,6 +446,9 @@ class LocklyManager:
             lock_name,
             action,
         )
+        if slot_id not in self._coordinator.data:
+            LOGGER.debug("Ignoring action for slot %s (slot removed)", slot_id)
+            return
         await self.update_slot(
             slot_id,
             last_response={"lock": lock_name, "action": action, "status": status},
