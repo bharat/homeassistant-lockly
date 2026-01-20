@@ -15,6 +15,12 @@ remove_slot:
       required: true
       selector:
         text:
+    lock_entities:
+      required: false
+      selector:
+        entity:
+          domain: lock
+          multiple: true
     slot:
       required: true
       selector:
@@ -31,6 +37,12 @@ apply_slot:
       required: true
       selector:
         text:
+    lock_entities:
+      required: false
+      selector:
+        entity:
+          domain: lock
+          multiple: true
     slot:
       required: true
       selector:
@@ -63,6 +75,12 @@ apply_all:
       required: true
       selector:
         text:
+    lock_entities:
+      required: false
+      selector:
+        entity:
+          domain: lock
+          multiple: true
 
 update_slot:
   name: Update Slot
@@ -100,6 +118,12 @@ wipe_slots:
       required: true
       selector:
         text:
+    lock_entities:
+      required: false
+      selector:
+        entity:
+          domain: lock
+          multiple: true
     slots:
       required: false
       selector:

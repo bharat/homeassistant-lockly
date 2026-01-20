@@ -46,16 +46,23 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
 ]
 
-SERVICE_SCHEMA_ENTRY = vol.Schema({vol.Required("entry_id"): cv.string})
+SERVICE_SCHEMA_ENTRY = vol.Schema(
+    {
+        vol.Required("entry_id"): cv.string,
+        vol.Optional("lock_entities"): vol.All(cv.ensure_list, [cv.string]),
+    }
+)
 SERVICE_SCHEMA_SLOT = vol.Schema(
     {
         vol.Required("entry_id"): cv.string,
         vol.Required("slot"): vol.Coerce(int),
+        vol.Optional("lock_entities"): vol.All(cv.ensure_list, [cv.string]),
     }
 )
 SERVICE_SCHEMA_WIPE = vol.Schema(
     {
         vol.Required("entry_id"): cv.string,
+        vol.Optional("lock_entities"): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("slots"): vol.Any(
             cv.string, vol.All(cv.ensure_list, [vol.Coerce(int)])
         ),
@@ -176,19 +183,25 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
 
     async def _handle_remove_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
-        await manager.remove_slot(call.data["slot"])
+        await manager.remove_slot(
+            call.data["slot"], lock_entities=call.data.get("lock_entities")
+        )
 
     async def _handle_apply_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
-        await manager.apply_slot(call.data["slot"])
+        await manager.apply_slot(
+            call.data["slot"], lock_entities=call.data.get("lock_entities")
+        )
 
     async def _handle_push_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
-        await manager.apply_slot(call.data["slot"])
+        await manager.apply_slot(
+            call.data["slot"], lock_entities=call.data.get("lock_entities")
+        )
 
     async def _handle_apply_all(call: ServiceCall) -> None:
         manager = await _get_manager(call)
-        await manager.apply_all()
+        await manager.apply_all(lock_entities=call.data.get("lock_entities"))
 
     async def _handle_update_slot(call: ServiceCall) -> None:
         manager = await _get_manager(call)
@@ -204,7 +217,7 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
         slots = call.data.get("slots")
         if isinstance(slots, str):
             slots = [int(item.strip()) for item in slots.split(",") if item.strip()]
-        await manager.wipe_slots(slots)
+        await manager.wipe_slots(slots, lock_entities=call.data.get("lock_entities"))
 
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_SLOT, _handle_add_slot, schema=SERVICE_SCHEMA_ENTRY

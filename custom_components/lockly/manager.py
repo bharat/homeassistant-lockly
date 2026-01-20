@@ -220,12 +220,14 @@ class LocklyManager:
             self._add_entities_for_slot(platform_key, slot)
         return slot
 
-    async def remove_slot(self, slot_id: int) -> None:
+    async def remove_slot(
+        self, slot_id: int, *, lock_entities: Iterable[str] | None = None
+    ) -> None:
         """Remove a slot and clear it from locks."""
         if slot_id not in self._coordinator.data:
             message = SLOT_NOT_FOUND
             raise ServiceValidationError(message)
-        await self.apply_slot(slot_id, force_clear=True)
+        await self.apply_slot(slot_id, force_clear=True, lock_entities=lock_entities)
         self._coordinator.data.pop(slot_id, None)
         await self._save()
         await self._remove_entities_for_slot(slot_id)
@@ -288,13 +290,23 @@ class LocklyManager:
             blocking=True,
         )
 
-    async def apply_slot(self, slot_id: int, *, force_clear: bool = False) -> None:
+    async def apply_slot(
+        self,
+        slot_id: int,
+        *,
+        force_clear: bool = False,
+        lock_entities: Iterable[str] | None = None,
+    ) -> None:
         """Apply a slot to all locks."""
         if slot_id not in self._coordinator.data:
             message = SLOT_NOT_FOUND
             raise ServiceValidationError(message)
         slot = self._coordinator.data[slot_id]
-        lock_names = self.lock_names
+        if lock_entities is None:
+            lock_names = self.lock_names
+        else:
+            entity_ids = [entity for entity in lock_entities if entity]
+            lock_names = self._resolve_lock_names_from_entities(entity_ids)
         if not lock_names:
             message = NO_LOCKS_CONFIGURED
             raise ServiceValidationError(message)
@@ -323,19 +335,24 @@ class LocklyManager:
             return
         self._schedule_timeout(slot_id)
 
-    async def apply_all(self) -> None:
+    async def apply_all(self, *, lock_entities: Iterable[str] | None = None) -> None:
         """Apply all slots."""
         for slot_id in sorted(self._coordinator.data):
-            await self.apply_slot(slot_id)
+            await self.apply_slot(slot_id, lock_entities=lock_entities)
 
-    async def wipe_slots(self, slot_ids: Iterable[int] | None = None) -> None:
+    async def wipe_slots(
+        self,
+        slot_ids: Iterable[int] | None = None,
+        *,
+        lock_entities: Iterable[str] | None = None,
+    ) -> None:
         """Wipe all slots or a subset."""
         targets = (
             list(slot_ids) if slot_ids is not None else list(self._coordinator.data)
         )
         for slot_id in targets:
             if slot_id in self._coordinator.data:
-                await self.remove_slot(slot_id)
+                await self.remove_slot(slot_id, lock_entities=lock_entities)
 
     async def _publish_set(self, slot_id: int, pin: str, lock_name: str) -> None:
         """Publish pin_code set to a lock."""
