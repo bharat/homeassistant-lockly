@@ -33,6 +33,7 @@ async def _setup_entry(
     _ = enable_custom_integrations
     hass.data["lockly_skip_frontend"] = True
     hass.data["lockly_skip_timeout"] = True
+    hass.data["lockly_skip_mqtt"] = True
     async_mock_service(hass, "mqtt", "publish")
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -140,3 +141,130 @@ async def test_apply_slot_dry_run_skips_mqtt(
         blocking=True,
     )
     assert len(mqtt_calls) == 0
+
+
+@pytest.mark.enable_socket
+async def test_apply_all_skips_disabled(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test apply_all only sends enabled slots."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
+
+    await hass.services.async_call(
+        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
+    )
+    await hass.services.async_call(
+        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.update_slot(1, name="Guest", pin="1234", enabled=True)
+    await manager.update_slot(2, name="Disabled", pin="9999", enabled=False)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_all",
+        {"entry_id": entry.entry_id, "lock_entities": ["lock.garden_upper_lock"]},
+        blocking=True,
+    )
+    assert len(mqtt_calls) == 1
+    payload = json.loads(mqtt_calls[0].data["payload"])
+    assert payload["pin_code"]["user"] == 1
+
+
+@pytest.mark.enable_socket
+async def test_remove_slot_clears_pin(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test removing a slot clears the PIN on the lock."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
+
+    await hass.services.async_call(
+        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.update_slot(1, name="Guest", pin="1234", enabled=True)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "remove_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
+    )
+    assert len(mqtt_calls) == 1
+    payload = json.loads(mqtt_calls[0].data["payload"])
+    assert payload["pin_code"]["user"] == 1
+    assert payload["pin_code"]["user_enabled"] is False
+    assert payload["pin_code"]["pin_code"] is None
+
+
+@pytest.mark.enable_socket
+async def test_wipe_slots_subset(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test wiping a subset clears only targeted slots."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
+
+    await hass.services.async_call(
+        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
+    )
+    await hass.services.async_call(
+        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.update_slot(1, name="Guest1", pin="1111", enabled=True)
+    await manager.update_slot(2, name="Guest2", pin="2222", enabled=True)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "wipe_slots",
+        {
+            "entry_id": entry.entry_id,
+            "slots": [1],
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
+    )
+    assert len(mqtt_calls) == 1
+    payload = json.loads(mqtt_calls[0].data["payload"])
+    assert payload["pin_code"]["user"] == 1
+    assert payload["pin_code"]["user_enabled"] is False
+
+
+@pytest.mark.enable_socket
+async def test_group_lock_entities_expand(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test lock group entity expands to lock members."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
+    hass.states.async_set(
+        "group.test_locks",
+        "on",
+        {"entity_id": ["lock.garden_upper_lock"]},
+    )
+
+    await hass.services.async_call(
+        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.update_slot(1, name="Guest", pin="1234", enabled=True)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["group.test_locks"],
+        },
+        blocking=True,
+    )
+    assert len(mqtt_calls) == 1
+    assert mqtt_calls[0].data["topic"] == "zigbee2mqtt/Garden Upper Lock/set"

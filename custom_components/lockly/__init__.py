@@ -281,28 +281,30 @@ async def async_setup_entry(
 
     hass.data[DOMAIN][entry.entry_id] = entry.runtime_data
 
-    async def _handle_action_message(msg: mqtt.ReceiveMessage) -> None:
-        topic = msg.topic
-        payload = msg.payload
-        if isinstance(payload, bytes):
-            try:
-                payload = payload.decode()
-            except UnicodeDecodeError:
-                payload = payload.decode(errors="replace")
-        if not topic.endswith("/action"):
-            return
-        lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
-        if not lock_name:
-            return
-        LOGGER.debug("MQTT %s: %s", topic, payload)
-        await manager.handle_mqtt_action(lock_name, str(payload))
+    if not hass.data.get(f"{DOMAIN}_skip_mqtt", False):
 
-    unsub: Callable[[], None] = await mqtt.async_subscribe(
-        hass,
-        f"{manager.mqtt_topic}/+/action",
-        _handle_action_message,
-    )
-    entry.runtime_data.subscriptions.append(unsub)
+        async def _handle_action_message(msg: mqtt.ReceiveMessage) -> None:
+            topic = msg.topic
+            payload = msg.payload
+            if isinstance(payload, bytes):
+                try:
+                    payload = payload.decode()
+                except UnicodeDecodeError:
+                    payload = payload.decode(errors="replace")
+            if not topic.endswith("/action"):
+                return
+            lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
+            if not lock_name:
+                return
+            LOGGER.debug("MQTT %s: %s", topic, payload)
+            await manager.handle_mqtt_action(lock_name, str(payload))
+
+        unsub: Callable[[], None] = await mqtt.async_subscribe(
+            hass,
+            f"{manager.mqtt_topic}/+/action",
+            _handle_action_message,
+        )
+        entry.runtime_data.subscriptions.append(unsub)
     return True
 
 

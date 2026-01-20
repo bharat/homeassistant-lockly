@@ -382,6 +382,9 @@ class LocklyManager:
     ) -> None:
         """Apply all slots."""
         for slot_id in sorted(self._coordinator.data):
+            slot = self._coordinator.data.get(slot_id)
+            if not slot or not slot.enabled:
+                continue
             await self.apply_slot(slot_id, lock_entities=lock_entities, dry_run=dry_run)
 
     async def wipe_slots(
