@@ -223,8 +223,11 @@ class LocklyCard extends HTMLElement {
           pointer-events: none;
         }
         .empty {
-          padding: 0 16px 16px 16px;
+          padding: 24px 16px 12px 16px;
           color: var(--secondary-text-color);
+        }
+        .empty.no-title {
+          margin-top: 12px;
         }
         .footer-actions {
           display: flex;
@@ -268,7 +271,7 @@ class LocklyCard extends HTMLElement {
           .join("")}
               </tbody>
             </table>`
-        : `<div class="empty">No slots yet. Use “Add slot” to create one.</div>`
+        : `<div class="empty ${title ? "" : "no-title"}">No slots yet. Use “Add slot” to create one.</div>`
       }
       ${canEdit
         ? `<div class="footer-actions">
@@ -630,17 +633,17 @@ class LocklyCardEditor extends HTMLElement {
         }
         .section-title {
           font-weight: 600;
-          margin-bottom: 8px;
+          margin: 8px 0 8px;
         }
         .section-desc {
           color: var(--secondary-text-color);
-          margin: 0 0 12px 0;
+          margin: 0 0 16px 0;
         }
         .toggle-stack {
           display: flex;
           flex-direction: column;
           gap: 12px;
-          margin-bottom: 16px;
+          margin-bottom: 24px;
         }
         .toggle-stack ha-formfield {
           display: flex;
