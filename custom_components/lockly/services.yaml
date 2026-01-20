@@ -64,6 +64,34 @@ apply_all:
       selector:
         text:
 
+update_slot:
+  name: Update Slot
+  description: Update the name, PIN, or enabled status for a slot.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    slot:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: box
+    name:
+      required: false
+      selector:
+        text:
+    pin:
+      required: false
+      selector:
+        text:
+    enabled:
+      required: false
+      selector:
+        boolean:
+
 wipe_slots:
   name: Wipe Slots
   description: Remove all slots or the specified subset.

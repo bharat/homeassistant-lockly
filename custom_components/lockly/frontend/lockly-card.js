@@ -125,23 +125,17 @@ class LocklyCard extends HTMLElement {
     const slotEntities = states.filter(
       (state) =>
         state.attributes &&
-        state.attributes.lockly_entry_id === this._config.entry_id
+        state.attributes.lockly_entry_id === this._config.entry_id &&
+        state.attributes.lockly_slot !== undefined
     );
-    const slots = {};
-    for (const entity of slotEntities) {
-      const slotId = entity.attributes.lockly_slot;
-      if (!slots[slotId]) {
-        slots[slotId] = {};
-      }
-      const type = entity.attributes.lockly_type;
-      slots[slotId][type] = entity;
-    }
-    return Object.keys(slots)
-      .map((slot) => ({
-        id: Number(slot),
-        name: slots[slot].name,
-        pin: slots[slot].pin,
-        enabled: slots[slot].enabled,
+    return slotEntities
+      .map((entity) => ({
+        id: Number(entity.attributes.lockly_slot),
+        entity_id: entity.entity_id,
+        name: entity.attributes.name || "",
+        pin: entity.attributes.pin || "",
+        enabled: Boolean(entity.attributes.enabled),
+        busy: Boolean(entity.attributes.busy),
       }))
       .sort((a, b) => a.id - b.id);
   }
@@ -193,15 +187,9 @@ class LocklyCard extends HTMLElement {
         .slot-row {
           border-top: 1px solid var(--divider-color);
         }
-        .clickable {
-          cursor: pointer;
-          text-decoration: underline;
-          text-decoration-color: transparent;
-        }
-        .clickable:hover {
-          text-decoration-color: var(--primary-text-color);
-        }
-        .apply-button {
+        .apply-button,
+        .edit-button,
+        .remove-button {
           min-width: 86px;
         }
         .busy {
@@ -223,55 +211,47 @@ class LocklyCard extends HTMLElement {
         <mwc-button id="apply-all" outlined>Apply all</mwc-button>
         <mwc-button id="wipe-all" outlined>Wipe</mwc-button>
       </div>
-      ${
-        slots.length
-          ? `<table class="slot-table">
+      ${slots.length
+        ? `<table class="slot-table">
               <thead>
                 <tr>
                   <th>Slot</th>
                   <th>Name</th>
                   <th>PIN</th>
                   <th>Enabled</th>
+                  <th>Edit</th>
                   <th>Apply</th>
-                  <th></th>
+                  <th>Remove</th>
                 </tr>
               </thead>
               <tbody>
                 ${slots
-                  .map(
-                    (slot) => `
-                  <tr class="slot-row ${slot.enabled?.attributes?.busy ? "busy" : ""}">
-                    <td class="clickable" data-more-info="${
-                      slot.name?.entity_id || ""
-                    }">${slot.id}</td>
-                    <td class="clickable" data-more-info="${
-                      slot.name?.entity_id || ""
-                    }">${slot.name?.state || ""}</td>
-                    <td class="clickable" data-more-info="${
-                      slot.pin?.entity_id || ""
-                    }">${slot.pin?.state || ""}</td>
+          .map(
+            (slot) => `
+                  <tr class="slot-row ${slot.busy ? "busy" : ""}">
+                    <td>${slot.id}</td>
+                    <td>${slot.name}</td>
+                    <td>${slot.pin ? "****" : ""}</td>
+                    <td>${slot.enabled ? "Yes" : "No"}</td>
                     <td>
-                      <ha-switch data-entity="${
-                        slot.enabled?.entity_id || ""
-                      }" ${slot.enabled?.state === "on" ? "checked" : ""}></ha-switch>
+                      <mwc-button class="edit-button" data-edit="${slot.id
+              }" outlined>Edit</mwc-button>
                     </td>
                     <td>
-                      <mwc-button class="apply-button" data-apply="${
-                        slot.id
-                      }" outlined>Apply</mwc-button>
+                      <mwc-button class="apply-button" data-apply="${slot.id
+              }" outlined>Apply</mwc-button>
                     </td>
                     <td>
-                      <mwc-button class="remove-button" data-remove="${
-                        slot.id
-                      }" outlined>Remove</mwc-button>
+                      <mwc-button class="remove-button" data-remove="${slot.id
+              }" outlined>Remove</mwc-button>
                     </td>
                   </tr>
                 `
-                  )
-                  .join("")}
+          )
+          .join("")}
               </tbody>
             </table>`
-          : `<div class="empty">No slots yet. Use “Add slot” to create one.</div>`
+        : `<div class="empty">No slots yet. Use “Add slot” to create one.</div>`
       }
     `;
     this._attachHandlers();
@@ -295,23 +275,13 @@ class LocklyCard extends HTMLElement {
         });
       }
     });
-    this._card.querySelectorAll("[data-more-info]").forEach((el) => {
+    this._card.querySelectorAll("[data-edit]").forEach((el) => {
       el.addEventListener("click", () => {
-        const entityId = el.getAttribute("data-more-info");
-        if (entityId) {
-          this._fireEvent("hass-more-info", { entityId });
+        const slotId = Number(el.getAttribute("data-edit"));
+        const slot = this._getSlots().find((item) => item.id === slotId);
+        if (slot) {
+          this._openEditor(slot);
         }
-      });
-    });
-    this._card.querySelectorAll("ha-switch").forEach((el) => {
-      el.addEventListener("change", () => {
-        const entityId = el.getAttribute("data-entity");
-        if (!entityId) {
-          return;
-        }
-        const stateObj = this._hass.states[entityId];
-        const service = stateObj?.state === "on" ? "turn_off" : "turn_on";
-        this._hass.callService("switch", service, { entity_id: entityId });
       });
     });
     this._card.querySelectorAll("[data-apply]").forEach((el) => {
@@ -336,13 +306,92 @@ class LocklyCard extends HTMLElement {
     });
   }
 
-  _fireEvent(type, detail) {
-    const event = new Event(type, {
-      bubbles: true,
-      composed: true,
+  _ensureDialog() {
+    if (this._dialog) {
+      return;
+    }
+    this._dialog = document.createElement("ha-dialog");
+    this._dialog.heading = "Edit Slot";
+    this._dialog.innerHTML = `
+      <style>
+        .dialog-content {
+          display: grid;
+          gap: 16px;
+          padding: 8px 0;
+        }
+        .switch-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+      </style>
+      <div class="dialog-content">
+        <ha-textfield id="lockly-slot-name" label="Name"></ha-textfield>
+        <ha-textfield
+          id="lockly-slot-pin"
+          label="PIN"
+          type="text"
+          inputmode="numeric"
+          pattern="[0-9]*"
+        ></ha-textfield>
+        <div class="switch-row">
+          <span>Enabled</span>
+          <ha-switch id="lockly-slot-enabled"></ha-switch>
+        </div>
+      </div>
+      <mwc-button slot="secondaryAction" id="lockly-slot-cancel">Cancel</mwc-button>
+      <mwc-button slot="primaryAction" id="lockly-slot-save" outlined>Save</mwc-button>
+    `;
+    this._dialog.addEventListener("closed", () => {
+      this._editingSlotId = null;
     });
-    event.detail = detail;
-    this.dispatchEvent(event);
+    document.body.appendChild(this._dialog);
+    this._dialog
+      .querySelector("#lockly-slot-cancel")
+      ?.addEventListener("click", () => {
+        this._dialog.open = false;
+      });
+    this._dialog
+      .querySelector("#lockly-slot-save")
+      ?.addEventListener("click", () => this._saveEditor());
+  }
+
+  _openEditor(slot) {
+    this._ensureDialog();
+    this._editingSlotId = slot.id;
+    const nameField = this._dialog.querySelector("#lockly-slot-name");
+    const pinField = this._dialog.querySelector("#lockly-slot-pin");
+    const enabledField = this._dialog.querySelector("#lockly-slot-enabled");
+    if (nameField) {
+      nameField.value = slot.name || "";
+    }
+    if (pinField) {
+      pinField.value = slot.pin || "";
+    }
+    if (enabledField) {
+      enabledField.checked = Boolean(slot.enabled);
+    }
+    this._dialog.open = true;
+  }
+
+  _saveEditor() {
+    if (!this._editingSlotId) {
+      return;
+    }
+    const nameField = this._dialog.querySelector("#lockly-slot-name");
+    const pinField = this._dialog.querySelector("#lockly-slot-pin");
+    const enabledField = this._dialog.querySelector("#lockly-slot-enabled");
+    const name = nameField ? nameField.value : "";
+    const pin = pinField ? pinField.value : "";
+    const enabled = enabledField ? enabledField.checked : false;
+    this._hass.callService("lockly", "update_slot", {
+      entry_id: this._config.entry_id,
+      slot: this._editingSlotId,
+      name,
+      pin,
+      enabled,
+    });
+    this._dialog.open = false;
   }
 
   _getDefaultTitle() {
@@ -465,18 +514,18 @@ class LocklyCardEditor extends HTMLElement {
       <div class="container">
         <ha-select class="field" label="Lock group">
           ${entries
-            .map((entry) => {
-              const label =
-                entry.group_name ||
-                entry.title ||
-                entry.group_entity_id ||
-                entry.entry_id;
-              const isSelected = entry.entry_id === selected ? "selected" : "";
-              return `<mwc-list-item value="${entry.entry_id}" ${isSelected}>
+        .map((entry) => {
+          const label =
+            entry.group_name ||
+            entry.title ||
+            entry.group_entity_id ||
+            entry.entry_id;
+          const isSelected = entry.entry_id === selected ? "selected" : "";
+          return `<mwc-list-item value="${entry.entry_id}" ${isSelected}>
                 ${label}
               </mwc-list-item>`;
-            })
-            .join("")}
+        })
+        .join("")}
         </ha-select>
         <p class="secondary">
           Select the lock group created by the Lockly integration.

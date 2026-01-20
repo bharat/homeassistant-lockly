@@ -6,8 +6,8 @@ Zigbee2MQTT lock slots across one or more locks.
 ## Features
 
 - Add/remove lock slots dynamically (up to a configured maximum).
-- Edit slot name and PIN with standard Home Assistant entity dialogs.
-- Toggle slots on/off without applying changes until you click Apply.
+- Edit slot name, PIN, and enabled status in a Lockly edit dialog.
+- View slot status in a read-only card until you click Apply.
 - Apply a slot to all configured locks.
 - Wipe slots (remove and clear them) in bulk.
 
@@ -48,6 +48,7 @@ and copy the entry ID from the browser URL.
 - `lockly.apply_slot`
 - `lockly.push_slot`
 - `lockly.apply_all`
+- `lockly.update_slot`
 - `lockly.wipe_slots`
 
 See `custom_components/lockly/services.yaml` for fields and descriptions.

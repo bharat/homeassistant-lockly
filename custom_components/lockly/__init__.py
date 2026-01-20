@@ -10,6 +10,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import CoreState, Event
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 
@@ -24,6 +25,7 @@ from .const import (
     SERVICE_APPLY_SLOT,
     SERVICE_PUSH_SLOT,
     SERVICE_REMOVE_SLOT,
+    SERVICE_UPDATE_SLOT,
     SERVICE_WIPE_SLOTS,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -41,8 +43,7 @@ if TYPE_CHECKING:
     from .data import LocklyConfigEntry
 
 PLATFORMS: list[Platform] = [
-    Platform.TEXT,
-    Platform.SWITCH,
+    Platform.SENSOR,
 ]
 
 SERVICE_SCHEMA_ENTRY = vol.Schema({vol.Required("entry_id"): cv.string})
@@ -58,6 +59,15 @@ SERVICE_SCHEMA_WIPE = vol.Schema(
         vol.Optional("slots"): vol.Any(
             cv.string, vol.All(cv.ensure_list, [vol.Coerce(int)])
         ),
+    }
+)
+SERVICE_SCHEMA_UPDATE = vol.Schema(
+    {
+        vol.Required("entry_id"): cv.string,
+        vol.Required("slot"): vol.Coerce(int),
+        vol.Optional("name"): cv.string,
+        vol.Optional("pin"): cv.string,
+        vol.Optional("enabled"): cv.boolean,
     }
 )
 
@@ -180,6 +190,15 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
         manager = await _get_manager(call)
         await manager.apply_all()
 
+    async def _handle_update_slot(call: ServiceCall) -> None:
+        manager = await _get_manager(call)
+        await manager.update_slot(
+            call.data["slot"],
+            name=call.data.get("name"),
+            pin=call.data.get("pin"),
+            enabled=call.data.get("enabled"),
+        )
+
     async def _handle_wipe(call: ServiceCall) -> None:
         manager = await _get_manager(call)
         slots = call.data.get("slots")
@@ -201,6 +220,9 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
     )
     hass.services.async_register(
         DOMAIN, SERVICE_APPLY_ALL, _handle_apply_all, schema=SERVICE_SCHEMA_ENTRY
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_UPDATE_SLOT, _handle_update_slot, schema=SERVICE_SCHEMA_UPDATE
     )
     hass.services.async_register(
         DOMAIN, SERVICE_WIPE_SLOTS, _handle_wipe, schema=SERVICE_SCHEMA_WIPE
@@ -227,6 +249,11 @@ async def async_setup_entry(
         subscriptions=[],
     )
     await coordinator.async_load()
+
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.domain in {"text", "switch"}:
+            registry.async_remove(entity.entity_id)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
