@@ -166,7 +166,7 @@ class LocklyCard extends HTMLElement {
           width: calc(100% - 32px);
           margin: 0 auto 8px;
           border-collapse: separate;
-          border-spacing: 0 10px;
+          border-spacing: 0 2px;
           font-size: 1rem;
           line-height: 1.4;
         }
@@ -184,11 +184,23 @@ class LocklyCard extends HTMLElement {
           transition: background-color 0.2s ease;
         }
         .slot-row td:first-child {
-          border-top-left-radius: 10px;
-          border-bottom-left-radius: 10px;
+          border-top-left-radius: 0;
+          border-bottom-left-radius: 0;
         }
         .slot-row td:last-child {
+          border-top-right-radius: 0;
+          border-bottom-right-radius: 0;
+        }
+        .slot-row:first-child td:first-child {
+          border-top-left-radius: 10px;
+        }
+        .slot-row:first-child td:last-child {
           border-top-right-radius: 10px;
+        }
+        .slot-row:last-child td:first-child {
+          border-bottom-left-radius: 10px;
+        }
+        .slot-row:last-child td:last-child {
           border-bottom-right-radius: 10px;
         }
         .slot-row.enabled td {
@@ -306,11 +318,12 @@ class LocklyCard extends HTMLElement {
   _attachHandlers() {
     const canEdit = Boolean(this._canEdit);
     const dryRun = Boolean(this._config?.dry_run);
-    this._card.querySelector("#add-slot")?.addEventListener("click", () => {
-      this._hass.callService("lockly", "add_slot", {
+    this._card.querySelector("#add-slot")?.addEventListener("click", async () => {
+      await this._hass.callService("lockly", "add_slot", {
         entry_id: this._config.entry_id,
         dry_run: dryRun,
       });
+      this._openNewestSlotAfterAdd();
     });
     this._card.querySelector("#apply-all")?.addEventListener("click", () => {
       if (
@@ -453,6 +466,33 @@ class LocklyCard extends HTMLElement {
       enabledField.checked = Boolean(slot.enabled);
     }
     this._dialog.open = true;
+    if (nameField && !nameField.value) {
+      requestAnimationFrame(() => nameField.focus?.());
+    }
+  }
+
+  _openNewestSlotAfterAdd() {
+    const attempts = 6;
+    const delayMs = 250;
+    let tries = 0;
+
+    const attemptOpen = () => {
+      const slots = this._getSlots();
+      if (!slots.length) {
+        return;
+      }
+      const newest = slots[slots.length - 1];
+      if (newest) {
+        this._openEditor(newest);
+        return;
+      }
+      if (tries < attempts) {
+        tries += 1;
+        setTimeout(attemptOpen, delayMs);
+      }
+    };
+
+    setTimeout(attemptOpen, delayMs);
   }
 
   async _saveEditor() {
