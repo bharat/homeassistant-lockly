@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Lockly Keyhole L Monogram (Trust Blue)">
+  <rect x="128" y="160" width="256" height="240" rx="32" fill="#1E6BD6"/>
+  <path fill="#1E6BD6" d="M176 160v-40a80 80 0 0 1 160 0v40h-48v-40a32 32 0 0 0-64 0v40h-48z"/>
+  <path fill="#E9F2FF" d="M256 220a48 48 0 0 0-24 90v70h80v-40h-40v-30a48 48 0 0 0-16-90z"/>
+  <path fill="#1E6BD6" d="M264 260a12 12 0 1 1-24 0 12 12 0 0 1 24 0z"/>
+</svg>

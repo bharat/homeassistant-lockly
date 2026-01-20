@@ -1,4 +1,7 @@
-# Lockly
+<h1 style="display: inline-flex; align-items: center; gap: 8px; margin: 0;">
+  <span>Lockly</span>
+  <img src="assets/lockly-logo-keyhole-l-trust-blue.svg" alt="Lockly logo" width="32" height="32" />
+</h1>
 
 [![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 [![Validate](https://github.com/bharat/homeassistant-lockly/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/bharat/homeassistant-lockly/actions/workflows/validate.yml)

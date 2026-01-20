@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Lockly Shielded L Lock (Trust Blue)">
+  <defs>
+    <linearGradient id="bgBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E6BD6"/>
+      <stop offset="1" stop-color="#0F1A2B"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#bgBlue)" d="M256 24 104 80v144c0 131 86 205 152 232 66-27 152-101 152-232V80L256 24z"/>
+  <rect x="168" y="220" width="176" height="160" rx="24" fill="#E9F2FF"/>
+  <path fill="#E9F2FF" d="M208 220v-40a48 48 0 0 1 96 0v40h-32v-40a16 16 0 0 0-32 0v40h-32z"/>
+  <path fill="#1E6BD6" d="M232 252h40v92h60v36h-100z"/>
+</svg>
