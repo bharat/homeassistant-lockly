@@ -257,9 +257,16 @@ class LocklyCard extends HTMLElement {
         }
         .footer-actions {
           display: flex;
+          justify-content: space-between;
+          align-items: center;
           gap: 8px;
           flex-wrap: wrap;
           padding: 8px 16px 16px 16px;
+        }
+        .footer-actions-left,
+        .footer-actions-right {
+          display: flex;
+          gap: 8px;
         }
       </style>
       ${title
@@ -305,9 +312,13 @@ class LocklyCard extends HTMLElement {
       }
       ${canEdit
         ? `<div class="footer-actions">
-        <ha-button id="add-slot" appearance="filled" variant="brand">+ Add Slot</ha-button>
-        <ha-button id="apply-all" class="danger" appearance="filled" variant="danger">Apply all</ha-button>
-        <ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe all</ha-button>
+        <div class="footer-actions-left">
+          <ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe all</ha-button>
+        </div>
+        <div class="footer-actions-right">
+          <ha-button id="apply-all" appearance="filled">Apply all</ha-button>
+          <ha-button id="add-slot" appearance="filled" variant="brand">+ Add Slot</ha-button>
+        </div>
       </div>`
         : ""
       }
