@@ -307,7 +307,7 @@ class LocklyCard extends HTMLElement {
         ? `<div class="footer-actions">
         <ha-button id="add-slot" appearance="filled" variant="brand">+ Add Slot</ha-button>
         <ha-button id="apply-all" class="danger" appearance="filled" variant="danger">Apply all</ha-button>
-        <ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe</ha-button>
+        <ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe all</ha-button>
       </div>`
         : ""
       }
