@@ -1,18 +1,127 @@
 # Lockly
 
-Lockly is a custom Home Assistant integration and Lovelace card that manage
-Zigbee2MQTT lock slots across one or more locks.
+[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
+[![Validate](https://github.com/bharat/homeassistant-lockly/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/bharat/homeassistant-lockly/actions/workflows/validate.yml)
+[![Lint](https://github.com/bharat/homeassistant-lockly/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/bharat/homeassistant-lockly/actions/workflows/lint.yml)
+[![Release](https://img.shields.io/github/v/release/bharat/homeassistant-lockly?sort=semver)](https://github.com/bharat/homeassistant-lockly/releases)
 
-## Features
+Lockly is a custom Home Assistant integration and Lovelace card that delivers a
+user-friendly lock management experience for compatible Zigbee2MQTT locks. It
+keeps your household access in one place with an easy, reliable, fast, and
+ergonomic workflow for managing PIN slots. From quick edits to bulk updates,
+Lockly stays focused on the small details that make access changes feel simple
+and safe.
 
-- Add/remove lock slots dynamically (up to a configured maximum).
-- Edit slot name, PIN, and enabled status in a Lockly edit dialog.
-- View slot status in a read-only card until you click Apply.
-- Apply a slot to all configured locks.
-- Apply all pushes enabled slots only; disabled slots are skipped.
-- Wipe slots removes slots and clears their PINs from locks.
+## Screenshots and Features
+
+<table>
+  <tr>
+    <td width="40%">
+      <strong>Manage multiple configurations</strong><br />
+      Run separate Lockly entries for different homes, buildings, or lock groups,
+      each with its own slots and MQTT settings.
+    </td>
+    <td width="60%">
+      <a href="assets/lockly-integration-entries.png">
+        <img
+          src="assets/lockly-integration-entries.png"
+          alt="Lockly integration entries"
+          width="480"
+          height="480"
+          style="object-fit: cover; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="40%">
+      <strong>See slot status at a glance</strong><br />
+      Color-coded rows show enabled vs. disabled slots across all locks so you
+      can spot changes instantly.
+    </td>
+    <td width="60%">
+      <a href="assets/lockly-card-multi.png">
+        <img
+          src="assets/lockly-card-multi.png"
+          alt="Multiple Lockly cards"
+          width="480"
+          height="480"
+          style="object-fit: cover; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="40%">
+      <strong>Configure with confidence</strong><br />
+      Pick the Lockly instance, control admin-only access, and enable simulation
+      mode to test without sending MQTT updates.
+    </td>
+    <td width="60%">
+      <a href="assets/lockly-card-configuration.png">
+        <img
+          src="assets/lockly-card-configuration.png"
+          alt="Lockly card configuration"
+          width="480"
+          height="480"
+          style="object-fit: cover; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="40%">
+      <strong>Select locks and groups visually</strong><br />
+      Add individual locks or whole groups directly from the Lovelace editor.
+    </td>
+    <td width="60%">
+      <a href="assets/lockly-card-entity-picker.png">
+        <img
+          src="assets/lockly-card-entity-picker.png"
+          alt="Lockly card entity picker"
+          width="480"
+          height="480"
+          style="object-fit: cover; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="40%">
+      <strong>Fast slot edits with validation</strong><br />
+      Update a slot name, PIN, or enabled state with clear, inline error
+      feedback before applying changes.
+    </td>
+    <td width="60%">
+      <a href="assets/lockly-edit-slot-dialog.png">
+        <img
+          src="assets/lockly-edit-slot-dialog.png"
+          alt="Edit slot dialog"
+          width="480"
+          height="480"
+          style="object-fit: cover; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
+</table>
+
+## What you can do
+
+- Run multiple Lockly configurations side by side for different lock groups.
+- Add, edit, enable, or remove lock slots on demand.
+- Update slot name and PIN with inline validation and clear error feedback.
+- Apply a single slot to all selected locks.
+- Apply all enabled slots in one action.
+- Wipe slots from locks when you need a clean slate.
+- Restrict PIN visibility and edits to admins only.
+- Simulate changes without sending MQTT commands.
+- Choose a Lockly instance per card and preview the card live while configuring.
+- Pick locks and lock groups directly from the visual editor.
 
 ## Installation (HACS)
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bharat&repository=homeassistant-lockly)
 
 1. Add this repository to HACS as a custom repository.
 2. Install the integration.
@@ -25,7 +134,20 @@ Zigbee2MQTT lock slots across one or more locks.
 
 ## Lovelace Card
 
-1. Add the card:
+This integration ships with a bundled Lovelace card, so you can add it the
+usual way from the dashboard UI.
+
+<a href="assets/lockly-add-to-dashboard.png">
+  <img
+    src="assets/lockly-add-to-dashboard.png"
+    alt="Add Lockly card to dashboard"
+    width="480"
+    height="480"
+    style="object-fit: cover; border: 2px solid #000;"
+  />
+</a>
+
+If you prefer YAML mode, add the card manually:
 
 ```
 type: custom:lockly-card
@@ -44,6 +166,12 @@ and copy the entry ID from the browser URL.
 In the visual editor, add the locks or lock groups that this card should manage.
 Enable "Only admins can see PINs and edit" to restrict edits and PIN visibility.
 Enable "Simulation mode (no MQTT)" to test the UI without touching locks.
+
+## How it works
+
+- Each Lockly integration entry represents a group of slots you manage together.
+- Slots are stored in Home Assistant and applied to one or more locks as needed.
+- The card shows live state and gives you a clear, consistent edit flow.
 
 ### Resource registration
 
