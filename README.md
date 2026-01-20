@@ -121,11 +121,19 @@ and safe.
 
 ## Installation (HACS)
 
+This integration is available directly in HACS under the Integration category.
+
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bharat&repository=homeassistant-lockly)
 
 1. Add this repository to HACS as a custom repository.
-2. Install the integration.
-3. Restart Home Assistant.
+2. Install the integration from HACS.
+3. Restart Home Assistant when prompted.
+
+## Manual install (without HACS)
+
+1. Copy the `custom_components/lockly` folder from this repository into your
+   Home Assistant `config/custom_components/` directory.
+2. Restart Home Assistant.
 
 ## Configuration
 
