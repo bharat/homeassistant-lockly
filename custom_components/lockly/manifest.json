@@ -2,7 +2,7 @@
   "domain": "lockly",
   "name": "Lockly",
   "codeowners": [
-    "@ludeeus"
+    "@bharat"
   ],
   "config_flow": true,
   "dependencies": [
