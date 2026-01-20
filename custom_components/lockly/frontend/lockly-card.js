@@ -158,7 +158,6 @@ class LocklyCard extends HTMLElement {
     const adminOnly = Boolean(this._config?.admin_only);
     const isAdmin = Boolean(this._hass?.user?.is_admin);
     const canEdit = !adminOnly || isAdmin;
-    const showPin = canEdit;
     this._canEdit = canEdit;
     const slots = this._getSlots();
     this._card.innerHTML = `
@@ -222,6 +221,27 @@ class LocklyCard extends HTMLElement {
           opacity: 0.6;
           pointer-events: none;
         }
+        .busy-indicator {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .busy-spinner {
+          width: 14px;
+          height: 14px;
+          border: 2px solid rgba(0, 0, 0, 0.2);
+          border-top-color: rgba(0, 0, 0, 0.6);
+          border-radius: 50%;
+          animation: lockly-spin 0.8s linear infinite;
+        }
+        @keyframes lockly-spin {
+          0% {
+            transform: rotate(0);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
         .empty {
           padding: 24px 16px 12px 16px;
           color: var(--secondary-text-color);
@@ -262,9 +282,13 @@ class LocklyCard extends HTMLElement {
               } ${slot.busy ? "busy" : ""}" data-slot="${slot.id}">
                     <td>${slot.id}</td>
                     <td>${slot.name}</td>
-                    <td>${showPin ? slot.pin : slot.pin ? "****" : ""
+                    <td>${slot.pin ? "****" : ""}</td>
+                    <td>${slot.busy
+                ? '<span class="busy-indicator"><span class="busy-spinner"></span>Working</span>'
+                : slot.enabled
+                  ? "Yes"
+                  : "No"
               }</td>
-                    <td>${slot.enabled ? "Yes" : "No"}</td>
                   </tr>
                 `
           )
