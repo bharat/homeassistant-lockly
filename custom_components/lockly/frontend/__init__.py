@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_call_later
 
-from ..const import INTEGRATION_VERSION, JSMODULES, URL_BASE
+from custom_components.lockly.const import JSMODULES, URL_BASE
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 
 class JSModuleRegistration:
@@ -30,7 +32,7 @@ class JSModuleRegistration:
         """Register the static HTTP path for frontend assets."""
         try:
             await self.hass.http.async_register_static_paths(
-                [StaticPathConfig(URL_BASE, Path(__file__).parent, False)]
+                [StaticPathConfig(URL_BASE, Path(__file__).parent, cache_headers=False)]
             )
         except RuntimeError:
             # Path already registered.
