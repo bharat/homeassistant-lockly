@@ -566,9 +566,15 @@ class LocklyManager:
         if self._hass.data.get("lockly_skip_worker"):
             self._start_action_timer(slot_id, lock_name)
             await self._mark_slot_updating(slot_id)
+            LOGGER.debug(
+                "MQTT publish (sync) queued for slot %s on %s",
+                slot_id,
+                lock_name,
+            )
             await self._publish_lock(lock_name, payload)
             return
         queue = self._ensure_lock_worker(lock_name)
+        LOGGER.debug("MQTT publish queued for slot %s on %s", slot_id, lock_name)
         await queue.put((slot_id, payload))
 
     async def _lock_worker(
@@ -608,6 +614,13 @@ class LocklyManager:
                 self._handle_action_timeout(slot_id, lock_name)
             ),
         )
+        LOGGER.debug(
+            "Action timer started for slot %s on %s (attempt=%s, timeout=%ss)",
+            slot_id,
+            lock_name,
+            action.get("attempts", 0) + 1,
+            DEFAULT_ACTION_TIMEOUT,
+        )
 
     def _cancel_action_timer(self, slot_id: int, lock_name: str) -> None:
         """Cancel an outstanding timeout for a lock action."""
@@ -618,6 +631,7 @@ class LocklyManager:
         if handle is not None:
             handle.cancel()
         action["handle"] = None
+        LOGGER.debug("Action timer cleared for slot %s on %s", slot_id, lock_name)
 
     async def _handle_action_timeout(self, slot_id: int, lock_name: str) -> None:
         """Handle a timeout for a lock action, retrying if configured."""
@@ -628,6 +642,13 @@ class LocklyManager:
         attempts = int(action.get("attempts", 0))
         if attempts < MAX_ACTION_RETRIES:
             action["attempts"] = attempts + 1
+            LOGGER.debug(
+                "Retrying slot %s on %s (attempt=%s/%s)",
+                slot_id,
+                lock_name,
+                action["attempts"] + 1,
+                MAX_ACTION_RETRIES + 1,
+            )
             await self._enqueue_publish(lock_name, slot_id, action["payload"])
             return
         self._pending_actions.pop((slot_id, lock_name), None)
@@ -693,10 +714,21 @@ class LocklyManager:
         """Handle MQTT action responses for a lock."""
         slot_queue = self._pending_by_lock.get(lock_name)
         if not slot_queue:
+            LOGGER.debug(
+                "Lock action ignored for %s (no pending slot): %s",
+                lock_name,
+                action,
+            )
             return
         slot_id = slot_queue.pop(0)
         if not slot_queue:
             self._pending_by_lock.pop(lock_name, None)
+        LOGGER.debug(
+            "Lock action dequeued slot %s for %s (action=%s)",
+            slot_id,
+            lock_name,
+            action,
+        )
         self._cancel_action_timer(slot_id, lock_name)
         self._pending_actions.pop((slot_id, lock_name), None)
         pending_locks = self._pending_slots.get(slot_id)
