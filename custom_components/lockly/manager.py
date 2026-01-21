@@ -80,7 +80,8 @@ class LocklyManager:
             if group_names:
                 return group_names
         if lock_entities := self._get_lock_entities(data):
-            entity_names = self._resolve_lock_names_from_entities(lock_entities)
+            expanded_entities = self._expand_lock_entity_ids(lock_entities)
+            entity_names = self._resolve_lock_names_from_entities(expanded_entities)
             if entity_names:
                 return entity_names
         LOGGER.debug(
@@ -117,6 +118,9 @@ class LocklyManager:
         device_registry = dr.async_get(self._hass)
         names: list[str] = []
         for entity_id in entity_ids:
+            if entity_id.startswith("group."):
+                names.extend(self._resolve_group_lock_names(entity_id))
+                continue
             state = self._hass.states.get(entity_id)
             if state and state.attributes.get("friendly_name"):
                 names.append(state.attributes["friendly_name"])
