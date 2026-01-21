@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
 from homeassistant.components import mqtt, websocket_api
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
-from homeassistant.core import CoreState, Event
+from homeassistant.core import CoreState, Event, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
@@ -21,6 +22,8 @@ from .const import (
     SERVICE_ADD_SLOT,
     SERVICE_APPLY_ALL,
     SERVICE_APPLY_SLOT,
+    SERVICE_EXPORT_SLOTS,
+    SERVICE_IMPORT_SLOTS,
     SERVICE_PUSH_SLOT,
     SERVICE_REMOVE_SLOT,
     SERVICE_UPDATE_SLOT,
@@ -76,6 +79,19 @@ SERVICE_SCHEMA_UPDATE = vol.Schema(
         vol.Optional("name"): cv.string,
         vol.Optional("pin"): cv.string,
         vol.Optional("enabled"): cv.boolean,
+    }
+)
+SERVICE_SCHEMA_EXPORT = vol.Schema(
+    {
+        vol.Required("entry_id"): cv.string,
+        vol.Optional("include_pins"): cv.boolean,
+    }
+)
+SERVICE_SCHEMA_IMPORT = vol.Schema(
+    {
+        vol.Required("entry_id"): cv.string,
+        vol.Required("payload"): cv.string,
+        vol.Optional("replace"): cv.boolean,
     }
 )
 
@@ -227,6 +243,26 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
             dry_run=call.data.get("dry_run", False),
         )
 
+    async def _handle_export_slots(call: ServiceCall) -> dict:
+        manager = await _get_manager(call)
+        include_pins = call.data.get("include_pins", False)
+        slots = manager.export_slots(include_pins=include_pins)
+        return {"slots": slots}
+
+    async def _handle_import_slots(call: ServiceCall) -> None:
+        manager = await _get_manager(call)
+        payload = call.data.get("payload", "")
+        try:
+            data = json.loads(payload) if payload else {}
+        except json.JSONDecodeError as err:
+            message = "invalid_payload"
+            raise ServiceValidationError(message) from err
+        slots = data.get("slots", []) if isinstance(data, dict) else data
+        if not isinstance(slots, list):
+            message = "invalid_payload"
+            raise ServiceValidationError(message)
+        await manager.import_slots(slots, replace=call.data.get("replace", True))
+
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_SLOT, _handle_add_slot, schema=SERVICE_SCHEMA_ENTRY
     )
@@ -247,6 +283,19 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
     )
     hass.services.async_register(
         DOMAIN, SERVICE_WIPE_SLOTS, _handle_wipe, schema=SERVICE_SCHEMA_WIPE
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_EXPORT_SLOTS,
+        _handle_export_slots,
+        schema=SERVICE_SCHEMA_EXPORT,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_IMPORT_SLOTS,
+        _handle_import_slots,
+        schema=SERVICE_SCHEMA_IMPORT,
     )
 
     return True

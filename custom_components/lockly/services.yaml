@@ -140,3 +140,33 @@ wipe_slots:
       required: false
       selector:
         text:
+
+export_slots:
+  name: Export Slots
+  description: Export slot data as JSON for a config entry.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    include_pins:
+      required: false
+      selector:
+        boolean:
+
+import_slots:
+  name: Import Slots
+  description: Import slot data from JSON for a config entry.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    payload:
+      required: true
+      selector:
+        text:
+    replace:
+      required: false
+      selector:
+        boolean:

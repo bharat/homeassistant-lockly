@@ -40,6 +40,7 @@ NO_AVAILABLE_SLOTS = "no_available_slots"
 SLOT_NOT_FOUND = "slot_not_found"
 NO_LOCKS_CONFIGURED = "no_locks_configured"
 INVALID_PIN = "invalid_pin"
+INVALID_SLOT = "invalid_slot"
 DEFAULT_MQTT_TIMEOUT = 15
 
 
@@ -336,6 +337,60 @@ class LocklyManager:
             slot.busy,
             slot.status,
         )
+        await self._save()
+
+    def _ensure_slot(self, slot_id: int) -> LocklySlot:
+        """Ensure a slot exists in storage."""
+        slot = self._coordinator.data.get(slot_id)
+        if slot:
+            return slot
+        slot = LocklySlot(slot=slot_id)
+        self._coordinator.data[slot_id] = slot
+        for platform_key in self._platforms:
+            self._add_entities_for_slot(platform_key, slot)
+        return slot
+
+    def export_slots(self, *, include_pins: bool = False) -> list[dict]:
+        """Export slots as serializable payload."""
+        slots = []
+        for slot_id in sorted(self._coordinator.data):
+            slot = self._coordinator.data[slot_id]
+            slots.append(
+                {
+                    "slot": slot.slot,
+                    "name": slot.name,
+                    "pin": slot.pin if include_pins else "",
+                    "enabled": slot.enabled,
+                }
+            )
+        return slots
+
+    async def import_slots(self, slots: list[dict], *, replace: bool = True) -> None:
+        """Import slots from a payload."""
+        if replace:
+            for slot_id in list(self._coordinator.data):
+                await self._remove_entities_for_slot(slot_id)
+                self._coordinator.data.pop(slot_id, None)
+        for item in slots:
+            if "slot" not in item:
+                message = INVALID_SLOT
+                raise ServiceValidationError(message)
+            slot_id = int(item["slot"])
+            if slot_id < 1 or slot_id > self.max_slots:
+                message = INVALID_SLOT
+                raise ServiceValidationError(message)
+            slot = self._ensure_slot(slot_id)
+            slot.name = str(item.get("name", "") or "")
+            slot.pin = str(item.get("pin", "") or "")
+            enabled = bool(item.get("enabled", False))
+            if enabled and not self._pin_re.match(slot.pin or ""):
+                message = INVALID_PIN
+                raise ServiceValidationError(message)
+            slot.enabled = enabled
+            slot.busy = False
+            slot.status = ""
+            slot.last_response = None
+            slot.last_response_ts = None
         await self._save()
 
     async def _notify_invalid_pin(self, slot_id: int) -> None:

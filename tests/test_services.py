@@ -314,3 +314,65 @@ async def test_slot_status_attribute(
     ]
     assert slot_states
     assert slot_states[0].attributes.get("status") == "queued"
+
+
+@pytest.mark.enable_socket
+async def test_export_slots_returns_payload(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test export slots returns serialized data."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="Guest", pin="1234", enabled=True)
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "export_slots",
+        {"entry_id": entry.entry_id},
+        blocking=True,
+        return_response=True,
+    )
+    slots = response.get("slots", [])
+    assert slots == [
+        {
+            "slot": 1,
+            "name": "Guest",
+            "pin": "",
+            "enabled": True,
+        }
+    ]
+
+
+@pytest.mark.enable_socket
+async def test_import_slots_replace(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test importing slots replaces existing data."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="Old", pin="9999", enabled=True)
+
+    payload = json.dumps(
+        {
+            "slots": [
+                {"slot": 2, "name": "New", "pin": "1234", "enabled": True},
+            ]
+        }
+    )
+    await hass.services.async_call(
+        DOMAIN,
+        "import_slots",
+        {"entry_id": entry.entry_id, "payload": payload},
+        blocking=True,
+    )
+    exported = manager.export_slots(include_pins=True)
+    assert exported == [
+        {
+            "slot": 2,
+            "name": "New",
+            "pin": "1234",
+            "enabled": True,
+        }
+    ]

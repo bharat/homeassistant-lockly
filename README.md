@@ -201,5 +201,18 @@ Enable "Simulation mode (no MQTT)" to test the UI without touching locks.
 - `lockly.apply_all`
 - `lockly.update_slot`
 - `lockly.wipe_slots`
+- `lockly.export_slots`
+- `lockly.import_slots`
 
 See `custom_components/lockly/services.yaml` for fields and descriptions.
+
+## Export & Import
+
+To move data between environments, export slots from one instance and import them into another:
+
+1. In production, call `lockly.export_slots` with your `entry_id`.
+2. Copy the returned JSON (the `slots` array).
+3. In dev, call `lockly.import_slots` with the `entry_id` and a `payload` containing the JSON.
+
+Use `include_pins: true` when exporting if you want PINs included. The import
+will overwrite slots by default; set `replace: false` to merge instead.
