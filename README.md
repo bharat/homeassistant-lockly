@@ -117,7 +117,7 @@ and safe.
 - Apply a single slot to all selected locks.
 - Apply all enabled slots in one action.
 - Wipe slots from locks when you need a clean slate.
-- Restrict PIN visibility and edits to admins only.
+- Restrict PIN visibility and edits to admins only (plus optionally grant that ability to other specified users).
 - Simulate changes without sending MQTT commands.
 - Choose a Lockly instance per card and preview the card live while configuring.
 - Pick locks and lock groups directly from the visual editor.
@@ -169,6 +169,8 @@ lock_entities:
   - group.downstairs_locks
 admin_only: true
 dry_run: true
+admin_users:
+  - your_user_id
 ```
 
 To find the entry ID, open the Lockly integration in Settings > Devices & Services
@@ -176,6 +178,7 @@ and copy the entry ID from the browser URL.
 
 In the visual editor, add the locks or lock groups that this card should manage.
 Enable "Only admins can see PINs and edit" to restrict edits and PIN visibility.
+Use "Additional admin user IDs" to give that privilege to other users without promoting them to HA admin.
 Enable "Simulation mode (no MQTT)" to test the UI without touching locks.
 
 ## How it works

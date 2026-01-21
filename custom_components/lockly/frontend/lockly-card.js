@@ -137,6 +137,10 @@ class LocklyCard extends HTMLElement {
     if (!this._hass || !this._card) {
       return;
     }
+
+    const extraAdminUsers = Array.isArray(this._config?.admin_users)
+      ? this._config.admin_users
+      : [];
     if (!this._config.entry_id) {
       this._card.innerHTML = `
         <div class="card-content">
@@ -151,7 +155,17 @@ class LocklyCard extends HTMLElement {
       : this._getDefaultTitle() || DEFAULT_TITLE;
     const adminOnly = Boolean(this._config?.admin_only);
     const isAdmin = Boolean(this._hass?.user?.is_admin);
-    const canEdit = !adminOnly || isAdmin;
+    const extraAdminTokens = new Set(
+      extraAdminUsers
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const userId = String(this._hass?.user?.id || "").toLowerCase();
+    const userName = String(this._hass?.user?.name || "").toLowerCase();
+    const isExtraAdmin =
+      (userId && extraAdminTokens.has(userId)) ||
+      (userName && extraAdminTokens.has(userName));
+    const canEdit = !adminOnly || isAdmin || isExtraAdmin;
     this._canEdit = canEdit;
     const slots = this._getSlots();
     this._card.innerHTML = `
@@ -629,6 +643,9 @@ class LocklyCardEditor extends HTMLElement {
     if (!Object.prototype.hasOwnProperty.call(this._config, "dry_run")) {
       this._config = { ...this._config, dry_run: false };
     }
+    if (!Object.prototype.hasOwnProperty.call(this._config, "admin_users")) {
+      this._config = { ...this._config, admin_users: [] };
+    }
     this._needsRender = true;
     this._render();
   }
@@ -689,6 +706,16 @@ class LocklyCardEditor extends HTMLElement {
   _handleTitleChange(ev) {
     const title = ev.target?.value ?? "";
     this._config = { ...this._config, title };
+    this._emitConfigChanged();
+  }
+
+  _handleAdminUsersChange(ev) {
+    const value = ev.target?.value ?? "";
+    const users = value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    this._config = { ...this._config, admin_users: users };
     this._emitConfigChanged();
   }
 
@@ -766,7 +793,7 @@ class LocklyCardEditor extends HTMLElement {
         }
       </style>
       <div class="container">
-        <ha-textfield class="field" label="Title (optional)"></ha-textfield>
+        <ha-textfield id="lockly-title" class="field" label="Title (optional)"></ha-textfield>
         ${entrySelect}
         <div class="toggle-stack">
           <ha-formfield label="Only admins can see PINs and edit">
@@ -776,6 +803,12 @@ class LocklyCardEditor extends HTMLElement {
             <ha-switch id="lockly-dry-run"></ha-switch>
           </ha-formfield>
         </div>
+        <ha-textfield
+          class="field"
+          label="Additional admin users (comma separated)"
+          id="lockly-admin-users"
+          helper-text="Enter full user IDs or display names (e.g., user_123, Jane)."
+        ></ha-textfield>
         <div class="section-title">Locks</div>
         <p class="section-desc">
           Add locks or lock groups that this card will manage.
@@ -783,10 +816,20 @@ class LocklyCardEditor extends HTMLElement {
         <ha-form id="lockly-entities-form"></ha-form>
       </div>
     `;
-    const titleField = this.querySelector("ha-textfield");
+    const titleField = this.querySelector("#lockly-title");
     if (titleField) {
       titleField.value = title;
       titleField.addEventListener("change", (ev) => this._handleTitleChange(ev));
+    }
+    const adminUsersField = this.querySelector("#lockly-admin-users");
+    if (adminUsersField) {
+      const adminUsers = Array.isArray(this._config?.admin_users)
+        ? this._config.admin_users
+        : [];
+      adminUsersField.value = adminUsers.join(", ");
+      adminUsersField.addEventListener("change", (ev) =>
+        this._handleAdminUsersChange(ev)
+      );
     }
     const select = this.querySelector("ha-select");
     if (select) {
