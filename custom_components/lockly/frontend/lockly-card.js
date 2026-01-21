@@ -162,9 +162,14 @@ class LocklyCard extends HTMLElement {
     );
     const userId = String(this._hass?.user?.id || "").toLowerCase();
     const userName = String(this._hass?.user?.name || "").toLowerCase();
+    const userNameParts = userName
+      .split(/\\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
     const isExtraAdmin =
       (userId && extraAdminTokens.has(userId)) ||
-      (userName && extraAdminTokens.has(userName));
+      (userName && extraAdminTokens.has(userName)) ||
+      userNameParts.some((part) => extraAdminTokens.has(part));
     const canEdit = !adminOnly || isAdmin || isExtraAdmin;
     this._canEdit = canEdit;
     const slots = this._getSlots();
@@ -807,7 +812,7 @@ class LocklyCardEditor extends HTMLElement {
           class="field"
           label="Additional admin users (comma separated)"
           id="lockly-admin-users"
-          helper-text="Enter full user IDs or display names (e.g., user_123, Jane)."
+          helper-text="Enter user IDs or display names (e.g., user_123, Bettina)."
         ></ha-textfield>
         <div class="section-title">Locks</div>
         <p class="section-desc">
