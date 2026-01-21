@@ -524,17 +524,23 @@ class LocklyManager:
             return
 
         def _on_stop(_: object) -> None:
-            self._hass.add_job(self.async_stop())
+            self._hass.add_job(self.async_stop(remove_listeners=False))
 
         self._stop_callbacks.append(
             self._hass.bus.async_listen_once("homeassistant_stop", _on_stop)
         )
 
-    async def async_stop(self) -> None:
+    async def async_stop(self, *, remove_listeners: bool = False) -> None:
         """Stop background tasks for the manager."""
-        for callback in self._stop_callbacks:
-            callback()
-        self._stop_callbacks.clear()
+        if remove_listeners:
+            for callback in self._stop_callbacks:
+                try:
+                    callback()
+                except ValueError:
+                    LOGGER.debug("Stop listener already removed", exc_info=True)
+            self._stop_callbacks.clear()
+        else:
+            self._stop_callbacks.clear()
         for worker in self._lock_workers.values():
             worker.cancel()
         self._lock_workers.clear()

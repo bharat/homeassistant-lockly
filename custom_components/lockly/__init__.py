@@ -370,7 +370,7 @@ async def async_unload_entry(
             for unsub in runtime.subscriptions:
                 unsub()
         if runtime:
-            await runtime.manager.async_stop()
+            await runtime.manager.async_stop(remove_listeners=True)
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
 
