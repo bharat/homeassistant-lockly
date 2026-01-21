@@ -79,6 +79,7 @@ class LocklySlotSensor(CoordinatorEntity[LocklySlotCoordinator], SensorEntity):
             "pin": slot.pin if slot else "",
             "enabled": bool(slot.enabled) if slot else False,
             "busy": getattr(slot, "busy", False) if slot else False,
+            "status": getattr(slot, "status", "") if slot else "",
             "last_response": getattr(slot, "last_response", {}) if slot else {},
             "last_response_ts": getattr(slot, "last_response_ts", None)
             if slot

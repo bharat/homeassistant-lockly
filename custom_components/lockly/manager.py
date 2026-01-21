@@ -41,7 +41,6 @@ SLOT_NOT_FOUND = "slot_not_found"
 NO_LOCKS_CONFIGURED = "no_locks_configured"
 INVALID_PIN = "invalid_pin"
 DEFAULT_MQTT_TIMEOUT = 15
-DEFAULT_PUBLISH_DELAY = 0.2
 
 
 class LocklyManager:
@@ -63,7 +62,10 @@ class LocklyManager:
         self._pending_by_lock: dict[str, list[int]] = {}
         self._pending_slots: dict[int, set[str]] = {}
         self._pending_timeouts: dict[int, object] = {}
-        self._publish_delay = DEFAULT_PUBLISH_DELAY
+        self._pending_lock_names: dict[int, list[str]] = {}
+        self._lock_queues: dict[str, asyncio.Queue[tuple[int, dict]]] = {}
+        self._lock_workers: dict[str, asyncio.Task] = {}
+        self._slot_publish_started: set[int] = set()
 
     @property
     def group_entity_id(self) -> str | None:
@@ -240,6 +242,7 @@ class LocklyManager:
                     "pin": "***" if slot.pin else "",
                     "enabled": slot.enabled,
                     "busy": slot.busy,
+                    "status": slot.status,
                 }
                 for slot in self._coordinator.data.values()
             ],
@@ -294,6 +297,7 @@ class LocklyManager:
         pin: str | None = None,
         enabled: bool | None = None,
         busy: bool | None = None,
+        status: str | None = None,
         last_response: dict | None = None,
         last_response_ts: float | None = None,
     ) -> None:
@@ -316,17 +320,20 @@ class LocklyManager:
             slot.enabled = enabled
         if busy is not None:
             slot.busy = busy
+        if status is not None:
+            slot.status = status
         if last_response is not None:
             slot.last_response = last_response
         if last_response_ts is not None:
             slot.last_response_ts = last_response_ts
         LOGGER.debug(
-            "Updated slot %s (name=%s, pin=%s, enabled=%s, busy=%s)",
+            "Updated slot %s (name=%s, pin=%s, enabled=%s, busy=%s, status=%s)",
             slot_id,
             slot.name,
             "***" if slot.pin else "",
             slot.enabled,
             slot.busy,
+            slot.status,
         )
         await self._save()
 
@@ -375,30 +382,45 @@ class LocklyManager:
             await self._notify_invalid_pin(slot_id)
             message = INVALID_PIN
             raise ServiceValidationError(message)
-        await self.update_slot(slot_id, busy=True)
+        await self.update_slot(slot_id, busy=True, status="queued")
         if dry_run:
             await self.update_slot(
                 slot_id,
                 busy=False,
+                status="",
                 last_response={"status": "simulated"},
                 last_response_ts=time.time(),
             )
             return
         pending_locks = set(lock_names)
         self._pending_slots[slot_id] = pending_locks
-        for index, lock_name in enumerate(lock_names):
+        self._pending_lock_names[slot_id] = list(lock_names)
+        for lock_name in lock_names:
             self._pending_by_lock.setdefault(lock_name, []).append(slot_id)
             if force_clear or not slot.enabled:
-                await self._publish_clear(slot_id, lock_name)
+                payload = {
+                    "pin_code": {
+                        "user": slot_id,
+                        "user_type": "unrestricted",
+                        "user_enabled": False,
+                        "pin_code": None,
+                    }
+                }
             else:
-                await self._publish_set(slot_id, slot.pin, lock_name)
-            if self._publish_delay and index < len(lock_names) - 1:
-                await asyncio.sleep(self._publish_delay)
+                payload = {
+                    "pin_code": {
+                        "user": slot_id,
+                        "user_type": "unrestricted",
+                        "user_enabled": True,
+                        "pin_code": slot.pin,
+                    }
+                }
+            await self._enqueue_publish(lock_name, slot_id, payload)
         if self._hass.data.get("lockly_skip_timeout"):
-            await self.update_slot(slot_id, busy=False)
+            await self.update_slot(slot_id, busy=False, status="")
             self._pending_slots.pop(slot_id, None)
+            self._pending_lock_names.pop(slot_id, None)
             return
-        self._schedule_timeout(slot_id, self._get_timeout(lock_names))
 
     async def apply_all(
         self, *, lock_entities: Iterable[str] | None = None, dry_run: bool = False
@@ -427,29 +449,53 @@ class LocklyManager:
                     slot_id, lock_entities=lock_entities, dry_run=dry_run
                 )
 
-    async def _publish_set(self, slot_id: int, pin: str, lock_name: str) -> None:
-        """Publish pin_code set to a lock."""
-        payload = {
-            "pin_code": {
-                "user": slot_id,
-                "user_type": "unrestricted",
-                "user_enabled": True,
-                "pin_code": pin,
-            }
-        }
-        await self._publish_lock(lock_name, payload)
+    def _ensure_lock_worker(self, lock_name: str) -> asyncio.Queue[tuple[int, dict]]:
+        """Ensure a per-lock worker is running for publish serialization."""
+        queue = self._lock_queues.get(lock_name)
+        if queue is None:
+            queue = asyncio.Queue()
+            self._lock_queues[lock_name] = queue
+        worker = self._lock_workers.get(lock_name)
+        if worker is None or worker.done():
+            self._lock_workers[lock_name] = self._hass.async_create_task(
+                self._lock_worker(lock_name, queue)
+            )
+        return queue
 
-    async def _publish_clear(self, slot_id: int, lock_name: str) -> None:
-        """Publish pin_code clear/disable to a lock."""
-        payload = {
-            "pin_code": {
-                "user": slot_id,
-                "user_type": "unrestricted",
-                "user_enabled": False,
-                "pin_code": None,
-            }
-        }
-        await self._publish_lock(lock_name, payload)
+    async def _enqueue_publish(
+        self, lock_name: str, slot_id: int, payload: dict
+    ) -> None:
+        """Queue a publish for a lock, preserving per-lock order."""
+        queue = self._ensure_lock_worker(lock_name)
+        await queue.put((slot_id, payload))
+
+    async def _lock_worker(
+        self, lock_name: str, queue: asyncio.Queue[tuple[int, dict]]
+    ) -> None:
+        """Worker that serializes publishes for a lock."""
+        while True:
+            slot_id, payload = await queue.get()
+            try:
+                await self._mark_slot_updating(slot_id)
+                await self._publish_lock(lock_name, payload)
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("MQTT publish failed for %s", lock_name)
+            finally:
+                queue.task_done()
+
+    async def _mark_slot_updating(self, slot_id: int) -> None:
+        """Mark a slot as updating when its first publish starts."""
+        if slot_id in self._slot_publish_started:
+            return
+        if slot_id not in self._coordinator.data:
+            return
+        self._slot_publish_started.add(slot_id)
+        if slot_id not in self._pending_timeouts and not self._hass.data.get(
+            "lockly_skip_timeout"
+        ):
+            lock_names = self._pending_lock_names.get(slot_id, [])
+            self._schedule_timeout(slot_id, self._get_timeout(lock_names))
+        await self.update_slot(slot_id, status="updating")
 
     async def _publish_lock(self, lock_name: str, payload: dict) -> None:
         """Publish a Zigbee2MQTT per-lock set command."""
@@ -506,6 +552,7 @@ class LocklyManager:
             await self.update_slot(
                 slot_id,
                 busy=False,
+                status="timeout",
                 last_response={
                     "status": "timeout",
                     "locks": sorted(pending_locks),
@@ -514,6 +561,7 @@ class LocklyManager:
             )
             self._pending_timeouts.pop(slot_id, None)
             LOGGER.warning("MQTT response timeout for slot %s", slot_id)
+            self._pending_lock_names.pop(slot_id, None)
 
         handle = self._hass.loop.call_later(
             timeout, lambda: self._hass.async_create_task(_on_timeout())
@@ -556,4 +604,6 @@ class LocklyManager:
             handle = self._pending_timeouts.pop(slot_id, None)
             if handle is not None:
                 handle.cancel()
-            await self.update_slot(slot_id, busy=False)
+            self._slot_publish_started.discard(slot_id)
+            await self.update_slot(slot_id, busy=False, status="")
+            self._pending_lock_names.pop(slot_id, None)

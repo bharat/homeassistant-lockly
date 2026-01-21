@@ -129,6 +129,7 @@ class LocklyCard extends HTMLElement {
         pin: entity.attributes.pin || "",
         enabled: Boolean(entity.attributes.enabled),
         busy: Boolean(entity.attributes.busy),
+        status: entity.attributes.status || "",
       }))
       .sort((a, b) => a.id - b.id);
   }
@@ -315,11 +316,17 @@ class LocklyCard extends HTMLElement {
                     <td>${slot.id}</td>
                     <td>${slot.name}</td>
                     <td>${slot.pin ? "****" : ""}</td>
-                    <td>${slot.busy
-                ? '<span class="busy-indicator"><span class="busy-spinner"></span>Working</span>'
-                : slot.enabled
-                  ? "Yes"
-                  : "No"
+                    <td>${slot.status === "queued"
+                ? "Queued"
+                : slot.status === "updating"
+                  ? '<span class="busy-indicator"><span class="busy-spinner"></span>Updating</span>'
+                  : slot.status === "timeout"
+                    ? "Timeout"
+                    : slot.busy
+                      ? '<span class="busy-indicator"><span class="busy-spinner"></span>Working</span>'
+                      : slot.enabled
+                        ? "Yes"
+                        : "No"
               }</td>
                   </tr>
                 `
