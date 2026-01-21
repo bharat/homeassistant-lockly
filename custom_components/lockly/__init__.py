@@ -349,12 +349,43 @@ async def async_setup_entry(
             LOGGER.debug("MQTT %s: %s", topic, payload)
             await manager.handle_mqtt_action(lock_name, str(payload))
 
-        unsub: Callable[[], None] = await mqtt.async_subscribe(
+        async def _handle_state_action(msg: mqtt.ReceiveMessage) -> None:
+            topic = msg.topic
+            if topic.endswith("/action"):
+                return
+            payload = msg.payload
+            if isinstance(payload, bytes):
+                try:
+                    payload = payload.decode()
+                except UnicodeDecodeError:
+                    payload = payload.decode(errors="replace")
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except json.JSONDecodeError:
+                    return
+            if not isinstance(payload, dict):
+                return
+            action = payload.get("action")
+            if not action:
+                return
+            lock_name = topic[len(manager.mqtt_topic) + 1 :]
+            if not lock_name:
+                return
+            LOGGER.debug("MQTT %s action: %s", topic, action)
+            await manager.handle_mqtt_action(lock_name, str(action))
+
+        unsub_action: Callable[[], None] = await mqtt.async_subscribe(
             hass,
             f"{manager.mqtt_topic}/+/action",
             _handle_action_message,
         )
-        entry.runtime_data.subscriptions.append(unsub)
+        unsub_state: Callable[[], None] = await mqtt.async_subscribe(
+            hass,
+            f"{manager.mqtt_topic}/+",
+            _handle_state_action,
+        )
+        entry.runtime_data.subscriptions.extend([unsub_action, unsub_state])
     return True
 
 
