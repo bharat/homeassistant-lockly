@@ -27,6 +27,7 @@ async def test_config_flow_user(
     """Test the config flow user step."""
     _ = enable_custom_integrations
     hass.data["lockly_skip_frontend"] = True
+    hass.data["lockly_skip_mqtt"] = True
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "user"}
@@ -56,6 +57,7 @@ async def test_options_flow_updates_settings(
     """Test options flow updates integration settings."""
     _ = enable_custom_integrations
     hass.data["lockly_skip_frontend"] = True
+    hass.data["lockly_skip_mqtt"] = True
     updated_slots = 10
     updated_topic = "zigbee2mqtt_test"
     updated_endpoint = 2

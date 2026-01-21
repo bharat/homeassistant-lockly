@@ -263,6 +263,7 @@ async def async_setup_entry(
         hass=hass, store=store, entry=entry, logger=LOGGER
     )
     manager = LocklyManager(hass=hass, entry=entry, coordinator=coordinator)
+    manager.register_stop_listener()
     entry.runtime_data = LocklyData(
         coordinator=coordinator,
         manager=manager,
@@ -319,6 +320,8 @@ async def async_unload_entry(
         if runtime and runtime.subscriptions:
             for unsub in runtime.subscriptions:
                 unsub()
+        if runtime:
+            await runtime.manager.async_stop()
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
 

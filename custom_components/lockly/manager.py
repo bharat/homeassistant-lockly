@@ -30,7 +30,7 @@ from .const import (
 from .coordinator import LocklySlot, LocklySlotCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
+    from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 
     from .data import LocklyConfigEntry
 
@@ -66,6 +66,7 @@ class LocklyManager:
         self._lock_queues: dict[str, asyncio.Queue[tuple[int, dict]]] = {}
         self._lock_workers: dict[str, asyncio.Task] = {}
         self._slot_publish_started: set[int] = set()
+        self._stop_callbacks: list[CALLBACK_TYPE] = []
 
     @property
     def group_entity_id(self) -> str | None:
@@ -462,10 +463,36 @@ class LocklyManager:
             )
         return queue
 
+    def register_stop_listener(self) -> None:
+        """Register a listener to cancel background workers on shutdown."""
+        if self._stop_callbacks:
+            return
+
+        def _on_stop(_: object) -> None:
+            self._hass.add_job(self.async_stop())
+
+        self._stop_callbacks.append(
+            self._hass.bus.async_listen_once("homeassistant_stop", _on_stop)
+        )
+
+    async def async_stop(self) -> None:
+        """Stop background tasks for the manager."""
+        for callback in self._stop_callbacks:
+            callback()
+        self._stop_callbacks.clear()
+        for worker in self._lock_workers.values():
+            worker.cancel()
+        self._lock_workers.clear()
+        self._lock_queues.clear()
+
     async def _enqueue_publish(
         self, lock_name: str, slot_id: int, payload: dict
     ) -> None:
         """Queue a publish for a lock, preserving per-lock order."""
+        if self._hass.data.get("lockly_skip_worker"):
+            await self._mark_slot_updating(slot_id)
+            await self._publish_lock(lock_name, payload)
+            return
         queue = self._ensure_lock_worker(lock_name)
         await queue.put((slot_id, payload))
 

@@ -39,8 +39,8 @@ and safe.
   <tr>
     <td width="40%">
       <strong>See slot status at a glance</strong><br />
-      Color-coded rows show enabled vs. disabled slots across all locks so you
-      can spot changes instantly.
+      Color-coded rows show enabled vs. disabled slots plus queued/updating
+      states during bulk operations.
     </td>
     <td width="60%">
       <a href="assets/lockly-card-multi.png">
@@ -115,7 +115,7 @@ and safe.
 - Add, edit, enable, or remove lock slots on demand.
 - Update slot name and PIN with inline validation and clear error feedback.
 - Apply a single slot to all selected locks.
-- Apply all enabled slots in one action.
+- Apply all enabled slots in one action with queued/updating progress.
 - Wipe slots from locks when you need a clean slate.
 - Restrict PIN visibility and edits to admins only (plus optionally grant that ability to other specified users).
 - Simulate changes without sending MQTT commands.
@@ -178,14 +178,14 @@ and copy the entry ID from the browser URL.
 
 In the visual editor, add the locks or lock groups that this card should manage.
 Enable "Only admins can see PINs and edit" to restrict edits and PIN visibility.
-Use "Additional admin user IDs" to give that privilege to other users without promoting them to HA admin.
+Use "Additional admin users" to allow specific IDs or display names without promoting them to HA admin.
 Enable "Simulation mode (no MQTT)" to test the UI without touching locks.
 
 ## How it works
 
 - Each Lockly integration entry represents a group of slots you manage together.
 - Slots are stored in Home Assistant and applied to one or more locks as needed.
-- The card shows live state and gives you a clear, consistent edit flow.
+- The card shows live state (queued, updating, timeout) and gives you a clear, consistent edit flow.
 
 ### Resource registration
 

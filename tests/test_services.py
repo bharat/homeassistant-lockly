@@ -2,7 +2,9 @@
 
 # ruff: noqa: S101
 
+import asyncio
 import json
+import time
 from typing import Any
 
 import pytest
@@ -34,6 +36,7 @@ async def _setup_entry(
     hass.data["lockly_skip_frontend"] = True
     hass.data["lockly_skip_timeout"] = True
     hass.data["lockly_skip_mqtt"] = True
+    hass.data["lockly_skip_worker"] = True
     async_mock_service(hass, "mqtt", "publish")
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -55,6 +58,16 @@ async def _setup_entry(
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
     return entry
+
+
+async def _wait_for_mqtt_calls(mqtt_calls: list, expected: int) -> None:
+    """Wait for MQTT publish calls from async workers."""
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline:
+        if len(mqtt_calls) >= expected:
+            return
+        await asyncio.sleep(0)
+    pytest.fail("Timed out waiting for MQTT publish calls")
 
 
 @pytest.mark.enable_socket
@@ -81,6 +94,8 @@ async def test_apply_slot_publishes_mqtt(
         },
         blocking=True,
     )
+    await hass.async_block_till_done()
+    await _wait_for_mqtt_calls(mqtt_calls, 1)
     assert len(mqtt_calls) == 1
     payload = json.loads(mqtt_calls[0].data["payload"])
     assert mqtt_calls[0].data["topic"] == "zigbee2mqtt/Garden Upper Lock/set"
@@ -113,6 +128,7 @@ async def test_apply_slot_rejects_invalid_pin(
         },
         blocking=True,
     )
+    await hass.async_block_till_done()
 
 
 @pytest.mark.enable_socket
@@ -140,6 +156,7 @@ async def test_apply_slot_dry_run_skips_mqtt(
         },
         blocking=True,
     )
+    await hass.async_block_till_done()
     assert len(mqtt_calls) == 0
 
 
@@ -167,6 +184,8 @@ async def test_apply_all_skips_disabled(
         {"entry_id": entry.entry_id, "lock_entities": ["lock.garden_upper_lock"]},
         blocking=True,
     )
+    await hass.async_block_till_done()
+    await _wait_for_mqtt_calls(mqtt_calls, 1)
     assert len(mqtt_calls) == 1
     payload = json.loads(mqtt_calls[0].data["payload"])
     assert payload["pin_code"]["user"] == 1
@@ -196,6 +215,8 @@ async def test_remove_slot_clears_pin(
         },
         blocking=True,
     )
+    await hass.async_block_till_done()
+    await _wait_for_mqtt_calls(mqtt_calls, 1)
     assert len(mqtt_calls) == 1
     payload = json.loads(mqtt_calls[0].data["payload"])
     assert payload["pin_code"]["user"] == 1
@@ -231,6 +252,8 @@ async def test_wipe_slots_subset(
         },
         blocking=True,
     )
+    await hass.async_block_till_done()
+    await _wait_for_mqtt_calls(mqtt_calls, 1)
     assert len(mqtt_calls) == 1
     payload = json.loads(mqtt_calls[0].data["payload"])
     assert payload["pin_code"]["user"] == 1
@@ -266,5 +289,28 @@ async def test_group_lock_entities_expand(
         },
         blocking=True,
     )
+    await hass.async_block_till_done()
+    await _wait_for_mqtt_calls(mqtt_calls, 1)
     assert len(mqtt_calls) == 1
     assert mqtt_calls[0].data["topic"] == "zigbee2mqtt/Garden Upper Lock/set"
+
+
+@pytest.mark.enable_socket
+async def test_slot_status_attribute(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test slot status attribute is exposed."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    await hass.services.async_call(
+        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.update_slot(1, status="queued")
+    await hass.async_block_till_done()
+    slot_states = [
+        state
+        for state in hass.states.async_all()
+        if state.attributes.get("lockly_slot") == 1
+    ]
+    assert slot_states
+    assert slot_states[0].attributes.get("status") == "queued"
