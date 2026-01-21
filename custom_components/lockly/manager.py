@@ -41,7 +41,8 @@ SLOT_NOT_FOUND = "slot_not_found"
 NO_LOCKS_CONFIGURED = "no_locks_configured"
 INVALID_PIN = "invalid_pin"
 INVALID_SLOT = "invalid_slot"
-DEFAULT_MQTT_TIMEOUT = 15
+DEFAULT_ACTION_TIMEOUT = 10
+MAX_ACTION_RETRIES = 3
 
 
 class LocklyManager:
@@ -62,8 +63,8 @@ class LocklyManager:
         self._pin_re = re.compile(PIN_REGEX)
         self._pending_by_lock: dict[str, list[int]] = {}
         self._pending_slots: dict[int, set[str]] = {}
-        self._pending_timeouts: dict[int, object] = {}
         self._pending_lock_names: dict[int, list[str]] = {}
+        self._pending_actions: dict[tuple[int, str], dict[str, object]] = {}
         self._lock_queues: dict[str, asyncio.Queue[tuple[int, dict]]] = {}
         self._lock_workers: dict[str, asyncio.Task] = {}
         self._slot_publish_started: set[int] = set()
@@ -471,11 +472,18 @@ class LocklyManager:
                         "pin_code": slot.pin,
                     }
                 }
+            self._pending_actions[(slot_id, lock_name)] = {
+                "attempts": 0,
+                "payload": payload,
+                "handle": None,
+            }
             await self._enqueue_publish(lock_name, slot_id, payload)
         if self._hass.data.get("lockly_skip_timeout"):
             await self.update_slot(slot_id, busy=False, status="")
             self._pending_slots.pop(slot_id, None)
             self._pending_lock_names.pop(slot_id, None)
+            for lock_name in lock_names:
+                self._pending_actions.pop((slot_id, lock_name), None)
             return
 
     async def apply_all(
@@ -545,12 +553,18 @@ class LocklyManager:
             worker.cancel()
         self._lock_workers.clear()
         self._lock_queues.clear()
+        for action in self._pending_actions.values():
+            handle = action.get("handle")
+            if handle is not None:
+                handle.cancel()
+        self._pending_actions.clear()
 
     async def _enqueue_publish(
         self, lock_name: str, slot_id: int, payload: dict
     ) -> None:
         """Queue a publish for a lock, preserving per-lock order."""
         if self._hass.data.get("lockly_skip_worker"):
+            self._start_action_timer(slot_id, lock_name)
             await self._mark_slot_updating(slot_id)
             await self._publish_lock(lock_name, payload)
             return
@@ -564,6 +578,7 @@ class LocklyManager:
         while True:
             slot_id, payload = await queue.get()
             try:
+                self._start_action_timer(slot_id, lock_name)
                 await self._mark_slot_updating(slot_id)
                 await self._publish_lock(lock_name, payload)
             except Exception:  # noqa: BLE001
@@ -578,12 +593,70 @@ class LocklyManager:
         if slot_id not in self._coordinator.data:
             return
         self._slot_publish_started.add(slot_id)
-        if slot_id not in self._pending_timeouts and not self._hass.data.get(
-            "lockly_skip_timeout"
-        ):
-            lock_names = self._pending_lock_names.get(slot_id, [])
-            self._schedule_timeout(slot_id, self._get_timeout(lock_names))
         await self.update_slot(slot_id, status="updating")
+
+    def _start_action_timer(self, slot_id: int, lock_name: str) -> None:
+        """Start a timeout timer for a lock action if needed."""
+        if self._hass.data.get("lockly_skip_timeout"):
+            return
+        action = self._pending_actions.get((slot_id, lock_name))
+        if not action or action.get("handle"):
+            return
+        action["handle"] = self._hass.loop.call_later(
+            DEFAULT_ACTION_TIMEOUT,
+            lambda: self._hass.async_create_task(
+                self._handle_action_timeout(slot_id, lock_name)
+            ),
+        )
+
+    def _cancel_action_timer(self, slot_id: int, lock_name: str) -> None:
+        """Cancel an outstanding timeout for a lock action."""
+        action = self._pending_actions.get((slot_id, lock_name))
+        if not action:
+            return
+        handle = action.get("handle")
+        if handle is not None:
+            handle.cancel()
+        action["handle"] = None
+
+    async def _handle_action_timeout(self, slot_id: int, lock_name: str) -> None:
+        """Handle a timeout for a lock action, retrying if configured."""
+        action = self._pending_actions.get((slot_id, lock_name))
+        if not action:
+            return
+        action["handle"] = None
+        attempts = int(action.get("attempts", 0))
+        if attempts < MAX_ACTION_RETRIES:
+            action["attempts"] = attempts + 1
+            await self._enqueue_publish(lock_name, slot_id, action["payload"])
+            return
+        self._pending_actions.pop((slot_id, lock_name), None)
+        pending_locks = self._pending_slots.get(slot_id)
+        if pending_locks:
+            pending_locks.discard(lock_name)
+        if slot_id not in self._coordinator.data:
+            return
+        await self.update_slot(
+            slot_id,
+            status="timeout",
+            last_response={
+                "lock": lock_name,
+                "status": "timeout",
+                "attempts": attempts + 1,
+            },
+            last_response_ts=time.time(),
+        )
+        LOGGER.warning(
+            "MQTT response timeout for slot %s on %s (attempts=%s)",
+            slot_id,
+            lock_name,
+            attempts + 1,
+        )
+        if pending_locks is not None and not pending_locks:
+            self._pending_slots.pop(slot_id, None)
+            self._pending_lock_names.pop(slot_id, None)
+            self._slot_publish_started.discard(slot_id)
+            await self.update_slot(slot_id, busy=False, status="timeout")
 
     async def _publish_lock(self, lock_name: str, payload: dict) -> None:
         """Publish a Zigbee2MQTT per-lock set command."""
@@ -616,46 +689,6 @@ class LocklyManager:
         except Exception as err:  # noqa: BLE001
             LOGGER.exception("MQTT publish failed for %s: %s", lock_name, err)
 
-    def _get_timeout(self, lock_names: Iterable[str]) -> int:
-        """Compute timeout based on number of locks."""
-        count = len(list(lock_names))
-        return max(DEFAULT_MQTT_TIMEOUT, count * 6)
-
-    def _schedule_timeout(
-        self, slot_id: int, timeout: int = DEFAULT_MQTT_TIMEOUT
-    ) -> None:
-        """Schedule a timeout for an outstanding slot apply."""
-
-        async def _on_timeout() -> None:
-            pending_locks = self._pending_slots.pop(slot_id, None)
-            if pending_locks is None:
-                return
-            if slot_id not in self._coordinator.data:
-                LOGGER.debug(
-                    "MQTT response timeout for slot %s ignored (slot removed)",
-                    slot_id,
-                )
-                self._pending_timeouts.pop(slot_id, None)
-                return
-            await self.update_slot(
-                slot_id,
-                busy=False,
-                status="timeout",
-                last_response={
-                    "status": "timeout",
-                    "locks": sorted(pending_locks),
-                },
-                last_response_ts=time.time(),
-            )
-            self._pending_timeouts.pop(slot_id, None)
-            LOGGER.warning("MQTT response timeout for slot %s", slot_id)
-            self._pending_lock_names.pop(slot_id, None)
-
-        handle = self._hass.loop.call_later(
-            timeout, lambda: self._hass.async_create_task(_on_timeout())
-        )
-        self._pending_timeouts[slot_id] = handle
-
     async def handle_mqtt_action(self, lock_name: str, action: str) -> None:
         """Handle MQTT action responses for a lock."""
         slot_queue = self._pending_by_lock.get(lock_name)
@@ -664,6 +697,8 @@ class LocklyManager:
         slot_id = slot_queue.pop(0)
         if not slot_queue:
             self._pending_by_lock.pop(lock_name, None)
+        self._cancel_action_timer(slot_id, lock_name)
+        self._pending_actions.pop((slot_id, lock_name), None)
         pending_locks = self._pending_slots.get(slot_id)
         if pending_locks:
             pending_locks.discard(lock_name)
@@ -689,9 +724,6 @@ class LocklyManager:
         )
         if pending_locks is not None and not pending_locks:
             self._pending_slots.pop(slot_id, None)
-            handle = self._pending_timeouts.pop(slot_id, None)
-            if handle is not None:
-                handle.cancel()
             self._slot_publish_started.discard(slot_id)
             await self.update_slot(slot_id, busy=False, status="")
             self._pending_lock_names.pop(slot_id, None)
