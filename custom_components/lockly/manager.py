@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -39,6 +40,8 @@ NO_AVAILABLE_SLOTS = "no_available_slots"
 SLOT_NOT_FOUND = "slot_not_found"
 NO_LOCKS_CONFIGURED = "no_locks_configured"
 INVALID_PIN = "invalid_pin"
+DEFAULT_MQTT_TIMEOUT = 15
+DEFAULT_PUBLISH_DELAY = 0.2
 
 
 class LocklyManager:
@@ -60,6 +63,7 @@ class LocklyManager:
         self._pending_by_lock: dict[str, list[int]] = {}
         self._pending_slots: dict[int, set[str]] = {}
         self._pending_timeouts: dict[int, object] = {}
+        self._publish_delay = DEFAULT_PUBLISH_DELAY
 
     @property
     def group_entity_id(self) -> str | None:
@@ -382,17 +386,19 @@ class LocklyManager:
             return
         pending_locks = set(lock_names)
         self._pending_slots[slot_id] = pending_locks
-        for lock_name in lock_names:
+        for index, lock_name in enumerate(lock_names):
             self._pending_by_lock.setdefault(lock_name, []).append(slot_id)
             if force_clear or not slot.enabled:
                 await self._publish_clear(slot_id, lock_name)
             else:
                 await self._publish_set(slot_id, slot.pin, lock_name)
+            if self._publish_delay and index < len(lock_names) - 1:
+                await asyncio.sleep(self._publish_delay)
         if self._hass.data.get("lockly_skip_timeout"):
             await self.update_slot(slot_id, busy=False)
             self._pending_slots.pop(slot_id, None)
             return
-        self._schedule_timeout(slot_id)
+        self._schedule_timeout(slot_id, self._get_timeout(lock_names))
 
     async def apply_all(
         self, *, lock_entities: Iterable[str] | None = None, dry_run: bool = False
@@ -476,7 +482,14 @@ class LocklyManager:
         except Exception as err:  # noqa: BLE001
             LOGGER.exception("MQTT publish failed for %s: %s", lock_name, err)
 
-    def _schedule_timeout(self, slot_id: int, timeout: int = 15) -> None:
+    def _get_timeout(self, lock_names: Iterable[str]) -> int:
+        """Compute timeout based on number of locks."""
+        count = len(list(lock_names))
+        return max(DEFAULT_MQTT_TIMEOUT, count * 6)
+
+    def _schedule_timeout(
+        self, slot_id: int, timeout: int = DEFAULT_MQTT_TIMEOUT
+    ) -> None:
         """Schedule a timeout for an outstanding slot apply."""
 
         async def _on_timeout() -> None:
