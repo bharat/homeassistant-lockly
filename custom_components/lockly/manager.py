@@ -112,6 +112,22 @@ class LocklyManager:
             return []
         return self._resolve_lock_names_from_entities(entity_ids)
 
+    def _expand_group_members(self, entity_id: str) -> list[str]:
+        """Return lock entity members when a group entity is provided."""
+        state = self._hass.states.get(entity_id)
+        if not state:
+            return []
+        members = state.attributes.get("entity_id", [])
+        if isinstance(members, str):
+            members = [members]
+        if not isinstance(members, list):
+            return []
+        return [
+            member
+            for member in members
+            if isinstance(member, str) and member.startswith("lock.")
+        ]
+
     def _resolve_lock_names_from_entities(self, entity_ids: list[str]) -> list[str]:
         """Resolve Zigbee2MQTT lock names from entity ids."""
         registry = er.async_get(self._hass)
@@ -120,6 +136,10 @@ class LocklyManager:
         for entity_id in entity_ids:
             if entity_id.startswith("group."):
                 names.extend(self._resolve_group_lock_names(entity_id))
+                continue
+            group_members = self._expand_group_members(entity_id)
+            if group_members:
+                names.extend(self._resolve_lock_names_from_entities(group_members))
                 continue
             state = self._hass.states.get(entity_id)
             if state and state.attributes.get("friendly_name"):
@@ -144,19 +164,12 @@ class LocklyManager:
             if not entity_id:
                 continue
             if entity_id.startswith("group."):
-                group_state = self._hass.states.get(entity_id)
-                members = (
-                    group_state.attributes.get("entity_id", []) if group_state else []
-                )
-                if isinstance(members, str):
-                    members = [members]
-                expanded.extend(
-                    [
-                        member
-                        for member in members
-                        if isinstance(member, str) and member.startswith("lock.")
-                    ]
-                )
+                members = self._expand_group_members(entity_id)
+                expanded.extend(members)
+                continue
+            group_members = self._expand_group_members(entity_id)
+            if group_members:
+                expanded.extend(group_members)
                 continue
             expanded.append(entity_id)
         return expanded
