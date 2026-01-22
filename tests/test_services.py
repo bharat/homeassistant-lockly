@@ -18,6 +18,7 @@ from pytest_homeassistant_custom_component.common import (
     async_mock_service,
 )
 
+import custom_components.lockly.manager as lockly_manager
 from custom_components.lockly.const import (
     CONF_ENDPOINT,
     CONF_MAX_SLOTS,
@@ -30,13 +31,17 @@ from custom_components.lockly.const import (
 
 
 async def _setup_entry(
-    hass: HomeAssistant, enable_custom_integrations: Any
+    hass: HomeAssistant,
+    enable_custom_integrations: Any,
+    *,
+    skip_timeout: bool = True,
+    skip_worker: bool = True,
 ) -> MockConfigEntry:
     _ = enable_custom_integrations
     hass.data["lockly_skip_frontend"] = True
-    hass.data["lockly_skip_timeout"] = True
+    hass.data["lockly_skip_timeout"] = skip_timeout
     hass.data["lockly_skip_mqtt"] = True
-    hass.data["lockly_skip_worker"] = True
+    hass.data["lockly_skip_worker"] = skip_worker
     async_mock_service(hass, "mqtt", "publish")
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -376,3 +381,268 @@ async def test_import_slots_replace(
             "enabled": True,
         }
     ]
+
+
+@pytest.mark.enable_socket
+async def test_export_slots_include_pins(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test export slots returns PINs when requested."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="Guest", pin="1234", enabled=True)
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "export_slots",
+        {"entry_id": entry.entry_id, "include_pins": True},
+        blocking=True,
+        return_response=True,
+    )
+    slots = response.get("slots", [])
+    assert slots == [
+        {
+            "slot": 1,
+            "name": "Guest",
+            "pin": "1234",
+            "enabled": True,
+        }
+    ]
+
+
+@pytest.mark.enable_socket
+async def test_import_slots_merge(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test importing slots merges when replace is false."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="Old", pin="9999", enabled=True)
+
+    payload = json.dumps(
+        {
+            "slots": [
+                {"slot": 2, "name": "New", "pin": "1234", "enabled": True},
+            ]
+        }
+    )
+    await hass.services.async_call(
+        DOMAIN,
+        "import_slots",
+        {"entry_id": entry.entry_id, "payload": payload, "replace": False},
+        blocking=True,
+    )
+    exported = manager.export_slots(include_pins=True)
+    assert exported == [
+        {
+            "slot": 1,
+            "name": "Old",
+            "pin": "9999",
+            "enabled": True,
+        },
+        {
+            "slot": 2,
+            "name": "New",
+            "pin": "1234",
+            "enabled": True,
+        },
+    ]
+
+
+@pytest.mark.enable_socket
+async def test_import_slots_rejects_invalid_payload(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test importing invalid payload raises."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "import_slots",
+            {"entry_id": entry.entry_id, "payload": "not-json"},
+            blocking=True,
+        )
+
+
+@pytest.mark.enable_socket
+async def test_handle_mqtt_action_matches_action_user(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test action_user routes actions to the right slot."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.add_slot()
+    await manager.update_slot(1, name="One", pin="1111", enabled=True)
+    await manager.update_slot(2, name="Two", pin="2222", enabled=True)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
+    )
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 2,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    await manager.handle_mqtt_action(
+        "Garden Upper Lock", "pin_code_added", action_user=2
+    )
+    await hass.async_block_till_done()
+
+    slot_one = manager._coordinator.data[1]  # noqa: SLF001
+    slot_two = manager._coordinator.data[2]  # noqa: SLF001
+    assert slot_one.last_response is None
+    assert slot_two.last_response == {
+        "lock": "Garden Upper Lock",
+        "action": "pin_code_added",
+        "status": "enabled",
+    }
+    assert slot_two.busy is False
+
+
+@pytest.mark.enable_socket
+async def test_handle_mqtt_state_confirms_pending(
+    hass: HomeAssistant, enable_custom_integrations: Any, monkeypatch: Any
+) -> None:
+    """Test state payload confirms a pending action."""
+    monkeypatch.setattr(lockly_manager, "DEFAULT_ACTION_TIMEOUT", 1)
+    entry = await _setup_entry(
+        hass, enable_custom_integrations, skip_timeout=False, skip_worker=True
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="One", pin="1111", enabled=True)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    await manager.handle_mqtt_state(
+        "Garden Upper Lock",
+        {"users": {"1": {"status": "enabled"}}},
+    )
+    await hass.async_block_till_done()
+
+    slot = manager._coordinator.data[1]  # noqa: SLF001
+    assert slot.last_response == {
+        "lock": "Garden Upper Lock",
+        "action": "pin_code_added",
+        "status": "enabled",
+    }
+    assert slot.busy is False
+
+
+@pytest.mark.enable_socket
+async def test_action_timeout_retries_then_times_out(
+    hass: HomeAssistant, enable_custom_integrations: Any, monkeypatch: Any
+) -> None:
+    """Test action timeout retries and ends in timeout."""
+    monkeypatch.setattr(lockly_manager, "DEFAULT_ACTION_TIMEOUT", 0.01)
+    monkeypatch.setattr(lockly_manager, "MAX_ACTION_RETRIES", 1)
+    entry = await _setup_entry(
+        hass, enable_custom_integrations, skip_timeout=False, skip_worker=True
+    )
+    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="One", pin="1111", enabled=True)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline:
+        slot = manager._coordinator.data[1]  # noqa: SLF001
+        if slot.status == "timeout" and slot.busy is False:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("Timed out waiting for slot timeout state")
+
+    expected_calls = 2
+    assert len(mqtt_calls) == expected_calls
+    assert slot.last_response == {
+        "lock": "Garden Upper Lock",
+        "status": "timeout",
+        "attempts": 2,
+    }
+
+
+@pytest.mark.enable_socket
+async def test_lock_queue_preserves_order(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test per-lock queue preserves publish order."""
+    entry = await _setup_entry(
+        hass, enable_custom_integrations, skip_timeout=True, skip_worker=False
+    )
+    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.add_slot()
+    await manager.update_slot(1, name="One", pin="1111", enabled=True)
+    await manager.update_slot(2, name="Two", pin="2222", enabled=True)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
+    )
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 2,
+            "lock_entities": ["lock.garden_upper_lock"],
+        },
+        blocking=True,
+    )
+    await asyncio.sleep(0)
+    await _wait_for_mqtt_calls(mqtt_calls, 2)
+    payload_one = json.loads(mqtt_calls[0].data["payload"])
+    payload_two = json.loads(mqtt_calls[1].data["payload"])
+    expected_second_user = 2
+    assert payload_one["pin_code"]["user"] == 1
+    assert payload_two["pin_code"]["user"] == expected_second_user
+    workers = list(manager._lock_workers.values())  # noqa: SLF001
+    await manager.async_stop(remove_listeners=False)
+    await asyncio.gather(*workers, return_exceptions=True)
