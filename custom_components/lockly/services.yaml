@@ -72,10 +72,19 @@ push_slot:
           min: 1
           max: 100
           mode: box
+    lock_entities:
+      required: false
+      selector:
+        entity:
+          multiple: true
+    dry_run:
+      required: false
+      selector:
+        boolean:
 
 apply_all:
   name: Apply All
-  description: Apply all slots to all locks.
+  description: Apply all enabled slots to all locks.
   fields:
     entry_id:
       required: true
