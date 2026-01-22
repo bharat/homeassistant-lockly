@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from functools import partial
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
@@ -98,10 +99,8 @@ SERVICE_SCHEMA_IMPORT = vol.Schema(
 ENTRY_NOT_FOUND = "entry_not_found"
 
 
-async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0915
-    """Set up the Lockly integration."""
-    hass.data.setdefault(DOMAIN, {})
-    skip_frontend = hass.data.get(f"{DOMAIN}_skip_frontend", False)
+async def _register_websocket_handlers(hass: HomeAssistant) -> None:
+    """Register websocket commands."""
 
     @websocket_api.websocket_command(
         {
@@ -169,147 +168,191 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
 
     websocket_api.async_register_command(hass, websocket_list_entries)
 
-    if not skip_frontend:
 
-        async def _register_frontend(_: Event | None = None) -> None:
-            registration = JSModuleRegistration(hass)
-            await registration.async_register()
+async def _register_frontend(hass: HomeAssistant) -> None:
+    """Register frontend resources when enabled."""
+    if hass.data.get(f"{DOMAIN}_skip_frontend", False):
+        return
 
-        if hass.state is CoreState.running:
-            await _register_frontend()
-        else:
-            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _register_frontend)
+    async def _register(_: Event | None = None) -> None:
+        registration = JSModuleRegistration(hass)
+        await registration.async_register()
 
-    async def _get_manager(call: ServiceCall) -> LocklyManager:
-        entry_id = call.data["entry_id"]
-        runtime = hass.data[DOMAIN].get(entry_id)
-        if runtime is None:
-            message = ENTRY_NOT_FOUND
-            raise ServiceValidationError(message)
-        return runtime.manager
+    if hass.state is CoreState.running:
+        await _register()
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _register)
 
-    async def _handle_add_slot(call: ServiceCall) -> None:
-        manager = await _get_manager(call)
-        await manager.add_slot()
 
-    async def _handle_remove_slot(call: ServiceCall) -> None:
-        manager = await _get_manager(call)
-        await manager.remove_slot(
-            call.data["slot"],
-            lock_entities=call.data.get("lock_entities"),
-            dry_run=call.data.get("dry_run", False),
-        )
+async def _get_manager(hass: HomeAssistant, call: ServiceCall) -> LocklyManager:
+    entry_id = call.data["entry_id"]
+    runtime = hass.data[DOMAIN].get(entry_id)
+    if runtime is None:
+        message = ENTRY_NOT_FOUND
+        raise ServiceValidationError(message)
+    return runtime.manager
 
-    async def _handle_apply_slot(call: ServiceCall) -> None:
-        manager = await _get_manager(call)
-        await manager.apply_slot(
-            call.data["slot"],
-            lock_entities=call.data.get("lock_entities"),
-            dry_run=call.data.get("dry_run", False),
-        )
 
-    async def _handle_push_slot(call: ServiceCall) -> None:
-        manager = await _get_manager(call)
-        await manager.apply_slot(
-            call.data["slot"],
-            lock_entities=call.data.get("lock_entities"),
-            dry_run=call.data.get("dry_run", False),
-        )
+async def _handle_add_slot(hass: HomeAssistant, call: ServiceCall) -> None:
+    manager = await _get_manager(hass, call)
+    await manager.add_slot()
 
-    async def _handle_apply_all(call: ServiceCall) -> None:
-        manager = await _get_manager(call)
-        await manager.apply_all(
-            lock_entities=call.data.get("lock_entities"),
-            dry_run=call.data.get("dry_run", False),
-        )
 
-    async def _handle_update_slot(call: ServiceCall) -> None:
-        manager = await _get_manager(call)
-        await manager.update_slot(
-            call.data["slot"],
-            name=call.data.get("name"),
-            pin=call.data.get("pin"),
-            enabled=call.data.get("enabled"),
-        )
+async def _handle_remove_slot(hass: HomeAssistant, call: ServiceCall) -> None:
+    manager = await _get_manager(hass, call)
+    await manager.remove_slot(
+        call.data["slot"],
+        lock_entities=call.data.get("lock_entities"),
+        dry_run=call.data.get("dry_run", False),
+    )
 
-    async def _handle_wipe(call: ServiceCall) -> None:
-        manager = await _get_manager(call)
-        slots = call.data.get("slots")
-        if isinstance(slots, str):
-            slots = [int(item.strip()) for item in slots.split(",") if item.strip()]
-        await manager.wipe_slots(
-            slots,
-            lock_entities=call.data.get("lock_entities"),
-            dry_run=call.data.get("dry_run", False),
-        )
 
-    async def _handle_export_slots(call: ServiceCall) -> dict:
-        manager = await _get_manager(call)
-        include_pins = call.data.get("include_pins", False)
-        slots = manager.export_slots(include_pins=include_pins)
-        return {"slots": slots}
+async def _handle_apply_slot(hass: HomeAssistant, call: ServiceCall) -> None:
+    manager = await _get_manager(hass, call)
+    await manager.apply_slot(
+        call.data["slot"],
+        lock_entities=call.data.get("lock_entities"),
+        dry_run=call.data.get("dry_run", False),
+    )
 
-    async def _handle_import_slots(call: ServiceCall) -> None:
-        manager = await _get_manager(call)
-        payload = call.data.get("payload", "")
-        if not payload:
-            message = "invalid_payload"
-            raise ServiceValidationError(message)
-        try:
-            data = json.loads(payload)
-        except json.JSONDecodeError as err:
-            message = "invalid_payload"
-            raise ServiceValidationError(message) from err
-        slots = data.get("slots", []) if isinstance(data, dict) else data
-        if not isinstance(slots, list):
-            message = "invalid_payload"
-            raise ServiceValidationError(message)
-        await manager.import_slots(slots, replace=call.data.get("replace", True))
 
+async def _handle_push_slot(hass: HomeAssistant, call: ServiceCall) -> None:
+    manager = await _get_manager(hass, call)
+    await manager.apply_slot(
+        call.data["slot"],
+        lock_entities=call.data.get("lock_entities"),
+        dry_run=call.data.get("dry_run", False),
+    )
+
+
+async def _handle_apply_all(hass: HomeAssistant, call: ServiceCall) -> None:
+    manager = await _get_manager(hass, call)
+    await manager.apply_all(
+        lock_entities=call.data.get("lock_entities"),
+        dry_run=call.data.get("dry_run", False),
+    )
+
+
+async def _handle_update_slot(hass: HomeAssistant, call: ServiceCall) -> None:
+    manager = await _get_manager(hass, call)
+    await manager.update_slot(
+        call.data["slot"],
+        name=call.data.get("name"),
+        pin=call.data.get("pin"),
+        enabled=call.data.get("enabled"),
+    )
+
+
+async def _handle_wipe(hass: HomeAssistant, call: ServiceCall) -> None:
+    manager = await _get_manager(hass, call)
+    slots = call.data.get("slots")
+    if isinstance(slots, str):
+        slots = [int(item.strip()) for item in slots.split(",") if item.strip()]
+    await manager.wipe_slots(
+        slots,
+        lock_entities=call.data.get("lock_entities"),
+        dry_run=call.data.get("dry_run", False),
+    )
+
+
+async def _handle_export_slots(hass: HomeAssistant, call: ServiceCall) -> dict:
+    manager = await _get_manager(hass, call)
+    include_pins = call.data.get("include_pins", False)
+    slots = manager.export_slots(include_pins=include_pins)
+    return {"slots": slots}
+
+
+async def _handle_import_slots(hass: HomeAssistant, call: ServiceCall) -> None:
+    manager = await _get_manager(hass, call)
+    payload = call.data.get("payload", "")
+    if not payload:
+        message = "invalid_payload"
+        raise ServiceValidationError(message)
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as err:
+        message = "invalid_payload"
+        raise ServiceValidationError(message) from err
+    slots = data.get("slots", []) if isinstance(data, dict) else data
+    if not isinstance(slots, list):
+        message = "invalid_payload"
+        raise ServiceValidationError(message)
+    await manager.import_slots(slots, replace=call.data.get("replace", True))
+
+
+def _register_services(hass: HomeAssistant) -> None:
+    """Register services for Lockly."""
     hass.services.async_register(
-        DOMAIN, SERVICE_ADD_SLOT, _handle_add_slot, schema=SERVICE_SCHEMA_ENTRY
+        DOMAIN,
+        SERVICE_ADD_SLOT,
+        partial(_handle_add_slot, hass),
+        schema=SERVICE_SCHEMA_ENTRY,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_REMOVE_SLOT, _handle_remove_slot, schema=SERVICE_SCHEMA_SLOT
+        DOMAIN,
+        SERVICE_REMOVE_SLOT,
+        partial(_handle_remove_slot, hass),
+        schema=SERVICE_SCHEMA_SLOT,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_APPLY_SLOT, _handle_apply_slot, schema=SERVICE_SCHEMA_SLOT
+        DOMAIN,
+        SERVICE_APPLY_SLOT,
+        partial(_handle_apply_slot, hass),
+        schema=SERVICE_SCHEMA_SLOT,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_PUSH_SLOT, _handle_push_slot, schema=SERVICE_SCHEMA_SLOT
+        DOMAIN,
+        SERVICE_PUSH_SLOT,
+        partial(_handle_push_slot, hass),
+        schema=SERVICE_SCHEMA_SLOT,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_APPLY_ALL, _handle_apply_all, schema=SERVICE_SCHEMA_ENTRY
+        DOMAIN,
+        SERVICE_APPLY_ALL,
+        partial(_handle_apply_all, hass),
+        schema=SERVICE_SCHEMA_ENTRY,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_UPDATE_SLOT, _handle_update_slot, schema=SERVICE_SCHEMA_UPDATE
+        DOMAIN,
+        SERVICE_UPDATE_SLOT,
+        partial(_handle_update_slot, hass),
+        schema=SERVICE_SCHEMA_UPDATE,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_WIPE_SLOTS, _handle_wipe, schema=SERVICE_SCHEMA_WIPE
+        DOMAIN,
+        SERVICE_WIPE_SLOTS,
+        partial(_handle_wipe, hass),
+        schema=SERVICE_SCHEMA_WIPE,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_EXPORT_SLOTS,
-        _handle_export_slots,
+        partial(_handle_export_slots, hass),
         schema=SERVICE_SCHEMA_EXPORT,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_IMPORT_SLOTS,
-        _handle_import_slots,
+        partial(_handle_import_slots, hass),
         schema=SERVICE_SCHEMA_IMPORT,
     )
 
+
+async def async_setup(hass: HomeAssistant, _config: dict) -> bool:
+    """Set up the Lockly integration."""
+    hass.data.setdefault(DOMAIN, {})
+    await _register_websocket_handlers(hass)
+    await _register_frontend(hass)
+    _register_services(hass)
     return True
 
 
-# https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
-async def async_setup_entry(  # noqa: PLR0915
+async def _setup_entry_runtime(
     hass: HomeAssistant,
     entry: LocklyConfigEntry,
-) -> bool:
-    """Set up this integration using UI."""
+) -> LocklyManager:
+    """Create runtime data for a config entry."""
     store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}")
     coordinator = LocklySlotCoordinator(
         hass=hass, store=store, entry=entry, logger=LOGGER
@@ -323,80 +366,101 @@ async def async_setup_entry(  # noqa: PLR0915
         subscriptions=[],
     )
     await coordinator.async_load()
+    return manager
 
+
+def _cleanup_legacy_entities(hass: HomeAssistant, entry: LocklyConfigEntry) -> None:
+    """Remove legacy text/switch entities from the registry."""
     registry = er.async_get(hass)
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
         if entity.domain in {"text", "switch"}:
             registry.async_remove(entity.entity_id)
 
+
+async def _subscribe_mqtt(
+    hass: HomeAssistant,
+    entry: LocklyConfigEntry,
+    manager: LocklyManager,
+) -> None:
+    """Subscribe to MQTT updates for a lockly entry."""
+    if hass.data.get(f"{DOMAIN}_skip_mqtt", False):
+        return
+
+    async def _handle_action_message(msg: mqtt.ReceiveMessage) -> None:
+        topic = msg.topic
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            try:
+                payload = payload.decode()
+            except UnicodeDecodeError:
+                payload = payload.decode(errors="replace")
+        if not topic.endswith("/action"):
+            return
+        lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
+        if not lock_name:
+            return
+        LOGGER.debug("MQTT %s: %s", topic, payload)
+        await manager.handle_mqtt_action(lock_name, str(payload))
+
+    async def _handle_state_action(msg: mqtt.ReceiveMessage) -> None:
+        topic = msg.topic
+        if topic.endswith("/action"):
+            return
+        payload = msg.payload
+        if isinstance(payload, bytes):
+            try:
+                payload = payload.decode()
+            except UnicodeDecodeError:
+                payload = payload.decode(errors="replace")
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                return
+        if not isinstance(payload, dict):
+            return
+        lock_name = topic[len(manager.mqtt_topic) + 1 :]
+        if not lock_name:
+            return
+        action = payload.get("action")
+        if action:
+            action_user = payload.get("action_user")
+            if isinstance(action_user, str) and action_user.isdigit():
+                action_user = int(action_user)
+            if not isinstance(action_user, int):
+                action_user = None
+            LOGGER.debug("MQTT %s action: %s", topic, action)
+            await manager.handle_mqtt_action(
+                lock_name, str(action), action_user=action_user
+            )
+            return
+        await manager.handle_mqtt_state(lock_name, payload)
+
+    unsub_action: Callable[[], None] = await mqtt.async_subscribe(
+        hass,
+        f"{manager.mqtt_topic}/+/action",
+        _handle_action_message,
+    )
+    unsub_state: Callable[[], None] = await mqtt.async_subscribe(
+        hass,
+        f"{manager.mqtt_topic}/+",
+        _handle_state_action,
+    )
+    entry.runtime_data.subscriptions.extend([unsub_action, unsub_state])
+
+
+# https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: LocklyConfigEntry,
+) -> bool:
+    """Set up this integration using UI."""
+    manager = await _setup_entry_runtime(hass, entry)
+    _cleanup_legacy_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-
     hass.data[DOMAIN][entry.entry_id] = entry.runtime_data
-
-    if not hass.data.get(f"{DOMAIN}_skip_mqtt", False):
-
-        async def _handle_action_message(msg: mqtt.ReceiveMessage) -> None:
-            topic = msg.topic
-            payload = msg.payload
-            if isinstance(payload, bytes):
-                try:
-                    payload = payload.decode()
-                except UnicodeDecodeError:
-                    payload = payload.decode(errors="replace")
-            if not topic.endswith("/action"):
-                return
-            lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
-            if not lock_name:
-                return
-            LOGGER.debug("MQTT %s: %s", topic, payload)
-            await manager.handle_mqtt_action(lock_name, str(payload))
-
-        async def _handle_state_action(msg: mqtt.ReceiveMessage) -> None:
-            topic = msg.topic
-            if topic.endswith("/action"):
-                return
-            payload = msg.payload
-            if isinstance(payload, bytes):
-                try:
-                    payload = payload.decode()
-                except UnicodeDecodeError:
-                    payload = payload.decode(errors="replace")
-            if isinstance(payload, str):
-                try:
-                    payload = json.loads(payload)
-                except json.JSONDecodeError:
-                    return
-            if not isinstance(payload, dict):
-                return
-            lock_name = topic[len(manager.mqtt_topic) + 1 :]
-            if not lock_name:
-                return
-            action = payload.get("action")
-            if action:
-                action_user = payload.get("action_user")
-                if isinstance(action_user, str) and action_user.isdigit():
-                    action_user = int(action_user)
-                if not isinstance(action_user, int):
-                    action_user = None
-                LOGGER.debug("MQTT %s action: %s", topic, action)
-                await manager.handle_mqtt_action(
-                    lock_name, str(action), action_user=action_user
-                )
-                return
-            await manager.handle_mqtt_state(lock_name, payload)
-
-        unsub_action: Callable[[], None] = await mqtt.async_subscribe(
-            hass,
-            f"{manager.mqtt_topic}/+/action",
-            _handle_action_message,
-        )
-        unsub_state: Callable[[], None] = await mqtt.async_subscribe(
-            hass,
-            f"{manager.mqtt_topic}/+",
-            _handle_state_action,
-        )
-        entry.runtime_data.subscriptions.extend([unsub_action, unsub_state])
+    await _subscribe_mqtt(hass, entry, manager)
     return True
 
 

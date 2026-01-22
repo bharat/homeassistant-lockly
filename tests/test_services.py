@@ -520,8 +520,8 @@ async def test_handle_mqtt_action_matches_action_user(
     )
     await hass.async_block_till_done()
 
-    slot_one = manager._coordinator.data[1]  # noqa: SLF001
-    slot_two = manager._coordinator.data[2]  # noqa: SLF001
+    slot_one = manager.coordinator.data[1]
+    slot_two = manager.coordinator.data[2]
     assert slot_one.last_response is None
     assert slot_two.last_response == {
         "lock": "Garden Upper Lock",
@@ -562,7 +562,7 @@ async def test_handle_mqtt_state_confirms_pending(
     )
     await hass.async_block_till_done()
 
-    slot = manager._coordinator.data[1]  # noqa: SLF001
+    slot = manager.coordinator.data[1]
     assert slot.last_response == {
         "lock": "Garden Upper Lock",
         "action": "pin_code_added",
@@ -600,7 +600,7 @@ async def test_action_timeout_retries_then_times_out(
 
     deadline = time.monotonic() + 1
     while time.monotonic() < deadline:
-        slot = manager._coordinator.data[1]  # noqa: SLF001
+        slot = manager.coordinator.data[1]
         if slot.status == "timeout" and slot.busy is False:
             break
         await asyncio.sleep(0.01)
@@ -658,6 +658,6 @@ async def test_lock_queue_preserves_order(
     expected_second_user = 2
     assert payload_one["pin_code"]["user"] == 1
     assert payload_two["pin_code"]["user"] == expected_second_user
-    workers = list(manager._lock_workers.values())  # noqa: SLF001
+    workers = list(manager.lock_workers.values())
     await manager.async_stop(remove_listeners=False)
     await asyncio.gather(*workers, return_exceptions=True)

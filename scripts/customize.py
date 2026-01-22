@@ -19,7 +19,19 @@ import re
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class RepoInfo:
+    """Captured repository customization inputs."""
+
+    username: str
+    repo_name: str
+    snake: str
+    camel: str
+    human_title: str
 
 
 def read_origin_from_git_config(repo_root: Path) -> str | None:
@@ -364,14 +376,9 @@ def ensure_dod_in_devcontainer(repo_root: Path) -> bool:
     return changed
 
 
-def is_git_repo(repo_root: Path) -> bool:
-    """Return True if the directory appears to be a Git repository."""
-    return (repo_root / ".git").exists()
-
-
 def rename_with_git_mv(old_path: Path, new_path: Path, repo_root: Path) -> bool:
     """
-    Rename using `git mv` to preserve history; fall back to filesystem move.
+    Rename using a filesystem move.
 
     Returns True if a rename was performed.
     """
@@ -380,34 +387,13 @@ def rename_with_git_mv(old_path: Path, new_path: Path, repo_root: Path) -> bool:
     if new_path.exists():
         return False
     new_path.parent.mkdir(parents=True, exist_ok=True)
-    if is_git_repo(repo_root):
-        try:
-            # Use `-k` to skip errors for unrelated collisions; we guard above anyway
-            subprocess.run(  # noqa: S603 - fixed argv; no shell; trusted executable
-                (
-                    "git",
-                    "mv",
-                    "-k",
-                    "--",
-                    str(old_path),
-                    str(new_path),
-                ),
-                cwd=str(repo_root),
-                check=True,
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            shutil.move(str(old_path), str(new_path))
-        else:
-            return True
-    else:
-        shutil.move(str(old_path), str(new_path))
+    _ = repo_root
+    shutil.move(str(old_path), str(new_path))
     return True
 
 
-def main() -> int:  # noqa: PLR0912, PLR0915
-    """Run interactive customization."""
-    repo_root = Path(__file__).resolve().parents[1]
-
+def _collect_repo_inputs(repo_root: Path) -> RepoInfo | None:
+    """Collect repository and integration naming inputs."""
     origin_url = read_origin_from_git_config(repo_root)
     guessed_user, guessed_repo = parse_username_repo_from_origin(origin_url or "")
 
@@ -419,7 +405,7 @@ def main() -> int:  # noqa: PLR0912, PLR0915
         f"Confirm repository as {username}/{repo_name}?", default_yes=True
     ):
         print("Aborted by user.")
-        return 1
+        return None
 
     guessed_integration_base = guess_integration_name_from_repo(repo_name)
     integration_input = prompt_with_default(
@@ -427,7 +413,6 @@ def main() -> int:  # noqa: PLR0912, PLR0915
     )
     snake = to_snake_case(integration_input)
     camel = to_camel_caps(integration_input)
-    # Human-readable title with spaces: e.g., "foo_bar" -> "Foo Bar"
     human_title = " ".join(
         part[:1].upper() + part[1:].lower() for part in snake.split("_") if part
     )
@@ -435,14 +420,23 @@ def main() -> int:  # noqa: PLR0912, PLR0915
     print(f"Using integration identifiers -> snake_case: {snake}, CamelCaps: {camel}")
     if not confirm_yes_no("Proceed with these names?", default_yes=True):
         print("Aborted by user.")
-        return 1
+        return None
 
-    # Prepare replacements (exclude README.md)
-    replacements: tuple[tuple[str, str], ...] = (
-        ("ludeeus/integration_blueprint", f"{username}/{repo_name}"),
-        ("custom_components/integration_blueprint", f"custom_components/{snake}"),
+    return RepoInfo(
+        username=username,
+        repo_name=repo_name,
+        snake=snake,
+        camel=camel,
+        human_title=human_title,
     )
 
+
+def _apply_replacements(repo_root: Path, info: RepoInfo) -> int:
+    """Apply text replacements across the repository."""
+    replacements: tuple[tuple[str, str], ...] = (
+        ("ludeeus/integration_blueprint", f"{info.username}/{info.repo_name}"),
+        ("custom_components/integration_blueprint", f"custom_components/{info.snake}"),
+    )
     excluded_files = {
         str(repo_root / "README.md"),
         str(repo_root / "scripts" / "customize.py"),
@@ -455,70 +449,69 @@ def main() -> int:  # noqa: PLR0912, PLR0915
         ".pytest_cache",
         ".mypy_cache",
     }
-
+    excluded_exts = {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".ico",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
+        ".zip",
+        ".gz",
+    }
     changed_files = 0
     for path in repo_root.rglob("*"):
-        if not path.is_file():
+        if (
+            not path.is_file()
+            or any(part in excluded_dirs for part in path.parts)
+            or str(path) in excluded_files
+            or path.suffix.lower() in excluded_exts
+        ):
             continue
-        if any(part in excluded_dirs for part in path.parts):
-            continue
-        if str(path) in excluded_files:
-            continue
-        # Skip binary-ish files by extension
-        if path.suffix.lower() in {
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".gif",
-            ".ico",
-            ".woff",
-            ".woff2",
-            ".ttf",
-            ".otf",
-            ".zip",
-            ".gz",
-        }:
-            continue
-        # Blueprint → CamelCaps integration name inside component code
         extra_replacements: tuple[tuple[str, str], ...] = (
-            ("IntegrationBlueprint", camel),
-            ("Blueprint", camel),
+            ("IntegrationBlueprint", info.camel),
+            ("Blueprint", info.camel),
         )
-        # .github-specific replacement for human-readable name
         in_github = False
         try:
             path.relative_to(repo_root / ".github")
             in_github = True
         except ValueError:
             in_github = False
-        # For release workflow title, use human-readable Title Case with spaces
         is_release_workflow = in_github and path.name == "release.yml"
         if is_release_workflow:
             github_replacements: tuple[tuple[str, str], ...] = (
-                ("Integration blueprint", human_title),
+                ("Integration blueprint", info.human_title),
             )
         elif in_github:
-            github_replacements = (("Integration blueprint", camel),)
+            github_replacements = (("Integration blueprint", info.camel),)
         else:
             github_replacements = ()
-
         if (
             replace_text_in_file(path, replacements)
             or replace_text_in_file(path, extra_replacements)
             or (github_replacements and replace_text_in_file(path, github_replacements))
         ):
             changed_files += 1
+    return changed_files
 
-    # Rename custom component directory
+
+def _rename_component_directory(repo_root: Path, snake: str) -> None:
+    """Rename the custom component directory."""
     old_pkg_dir = repo_root / "custom_components" / "integration_blueprint"
     new_pkg_dir = repo_root / "custom_components" / snake
     if old_pkg_dir.exists() and old_pkg_dir.is_dir():
         if new_pkg_dir.exists():
             print(f"Target directory already exists: {new_pkg_dir}")
         elif rename_with_git_mv(old_pkg_dir, new_pkg_dir, repo_root):
-            print("Renamed component directory using git to preserve history.")
+            print("Renamed component directory.")
 
-    # Update manifest.json (domain and name)
+
+def _update_manifest_entry(repo_root: Path, snake: str, camel: str) -> None:
+    """Update manifest.json with new domain and name."""
     manifest_path_candidates = [
         repo_root / "custom_components" / snake / "manifest.json",
         repo_root / "custom_components" / "integration_blueprint" / "manifest.json",
@@ -528,7 +521,9 @@ def main() -> int:  # noqa: PLR0912, PLR0915
             update_manifest(manifest_path, domain=snake, display_name=camel)
             break
 
-    # Editor preference
+
+def _configure_editor(repo_root: Path) -> None:
+    """Apply editor preferences to devcontainer."""
     editor_choice = prompt_with_default("Editor (Cursor/VSCode)", "Cursor")
     if editor_choice.strip().lower().startswith("cursor"):
         ensure_cursor_editor_in_devcontainer(repo_root)
@@ -536,9 +531,10 @@ def main() -> int:  # noqa: PLR0912, PLR0915
     else:
         print("Skipping Cursor-specific devcontainer configuration.")
 
-    # VSCode extensions choice
+
+def _configure_vscode_extensions(repo_root: Path) -> None:
+    """Update VSCode extensions in devcontainer config."""
     devcontainer = repo_root / ".devcontainer.json"
-    # Read existing extensions (unused for defaults since defaults are Yes now)
     if devcontainer.exists():
         with contextlib.suppress(OSError, UnicodeDecodeError, json.JSONDecodeError):
             _ = json.loads(devcontainer.read_text(encoding="utf-8"))
@@ -566,7 +562,6 @@ def main() -> int:  # noqa: PLR0912, PLR0915
         },
     )
 
-    # If GitHub Local Actions requested, ensure `act` is installed in setup script
     if want_ghla:
         setup_path = repo_root / "scripts" / "setup"
         act_install = (
@@ -576,23 +571,39 @@ def main() -> int:  # noqa: PLR0912, PLR0915
         )
         ensure_line_in_file(setup_path, act_install)
 
-    # Pre-commit option
-    if confirm_yes_no("Enable pre-commit hooks?", default_yes=True):
-        # Add requirement pin
-        ensure_precommit_requirement(
-            repo_root / "requirements.txt", version_pin="3.5.0"
-        )
-        # Ensure install step in setup script
-        setup_path = repo_root / "scripts" / "setup"
-        ensure_line_in_file(setup_path, "pre-commit install")
 
-    # Docker outside-of-Docker support (useful for GitHub Local Actions)
+def _configure_precommit(repo_root: Path) -> None:
+    """Enable pre-commit hooks when requested."""
+    if not confirm_yes_no("Enable pre-commit hooks?", default_yes=True):
+        return
+    ensure_precommit_requirement(repo_root / "requirements.txt", version_pin="3.5.0")
+    setup_path = repo_root / "scripts" / "setup"
+    ensure_line_in_file(setup_path, "pre-commit install")
+
+
+def _configure_dod(repo_root: Path) -> None:
+    """Optionally enable Docker outside-of-Docker."""
     want_dod = confirm_yes_no(
         "Enable Docker outside-of-Docker (feature + docker.sock mount)?",
         default_yes=True,
     )
     if want_dod:
         ensure_dod_in_devcontainer(repo_root)
+
+
+def main() -> int:
+    """Run interactive customization."""
+    repo_root = Path(__file__).resolve().parents[1]
+    info = _collect_repo_inputs(repo_root)
+    if info is None:
+        return 1
+    changed_files = _apply_replacements(repo_root, info)
+    _rename_component_directory(repo_root, info.snake)
+    _update_manifest_entry(repo_root, info.snake, info.camel)
+    _configure_editor(repo_root)
+    _configure_vscode_extensions(repo_root)
+    _configure_precommit(repo_root)
+    _configure_dod(repo_root)
 
     print("Done. Files changed:", changed_files)
     print("If you are using git, review changes with: git status && git diff")

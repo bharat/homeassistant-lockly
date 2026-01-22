@@ -20,11 +20,12 @@ if TYPE_CHECKING:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,  # noqa: ARG001
+    hass: HomeAssistant,
     entry: LocklyConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Lockly slot sensor entities."""
+    _ = hass
     manager = entry.runtime_data.manager
 
     def _factory(slot: LocklySlot) -> list[LocklySlotSensor]:

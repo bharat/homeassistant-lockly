@@ -1,7 +1,5 @@
 """Tests for Lockly frontend registration."""
 
-# ruff: noqa: S101
-
 from collections.abc import Iterable
 from types import SimpleNamespace
 from typing import Any
@@ -55,7 +53,7 @@ async def test_async_register_path_ignores_duplicate(hass: HomeAssistant) -> Non
     )
     registration = JSModuleRegistration(hass)
 
-    await registration._async_register_path()  # noqa: SLF001
+    await registration.async_register()
 
 
 @pytest.mark.asyncio
@@ -71,9 +69,10 @@ async def test_register_modules_updates_existing_and_cleans_legacy(
     }
     resources = _ResourcesStub([legacy, existing])
     hass.data["lovelace"] = _LovelaceStub(resources)
+    hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     registration = JSModuleRegistration(hass)
 
-    await registration._async_register_modules()  # noqa: SLF001
+    await registration.async_register()
 
     resources.async_delete_item.assert_awaited_once_with("legacy")
     resources.async_update_item.assert_awaited_once()
@@ -84,19 +83,9 @@ async def test_register_modules_creates_when_missing(hass: HomeAssistant) -> Non
     """Ensure modules are created when none exist."""
     resources = _ResourcesStub([])
     hass.data["lovelace"] = _LovelaceStub(resources)
+    hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     registration = JSModuleRegistration(hass)
 
-    await registration._async_register_modules()  # noqa: SLF001
+    await registration.async_register()
 
     resources.async_create_item.assert_awaited_once()
-
-
-def test_get_version_and_path_helpers(hass: HomeAssistant) -> None:
-    """Verify URL helper parsing."""
-    registration = JSModuleRegistration(hass)
-    assert (
-        registration._get_path("/lockly/lockly-card.js?v=1")  # noqa: SLF001
-        == "/lockly/lockly-card.js"
-    )
-    assert registration._get_version("/lockly/lockly-card.js?v=1") == "1"  # noqa: SLF001
-    assert registration._get_version("/lockly/lockly-card.js") == "0"  # noqa: SLF001

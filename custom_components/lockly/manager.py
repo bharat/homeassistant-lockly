@@ -7,9 +7,9 @@ import json
 import re
 import time
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NotRequired, TypedDict, Unpack
 
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -35,6 +35,19 @@ if TYPE_CHECKING:
     from .data import LocklyConfigEntry
 
 EntityFactory = Callable[[LocklySlot], list]
+
+
+class SlotUpdate(TypedDict, total=False):
+    """Update payload for a lock slot."""
+
+    name: NotRequired[str | None]
+    pin: NotRequired[str | None]
+    enabled: NotRequired[bool | None]
+    busy: NotRequired[bool | None]
+    status: NotRequired[str | None]
+    last_response: NotRequired[dict | None]
+    last_response_ts: NotRequired[float | None]
+
 
 NO_AVAILABLE_SLOTS = "no_available_slots"
 SLOT_NOT_FOUND = "slot_not_found"
@@ -76,6 +89,16 @@ class LocklyManager:
         data = self._entry.options or self._entry.data
         group_entity_id = data.get(CONF_LOCK_GROUP_ENTITY)
         return str(group_entity_id) if group_entity_id else None
+
+    @property
+    def coordinator(self) -> LocklySlotCoordinator:
+        """Return the slot coordinator."""
+        return self._coordinator
+
+    @property
+    def lock_workers(self) -> dict[str, asyncio.Task]:
+        """Return active lock worker tasks."""
+        return self._lock_workers
 
     @property
     def lock_names(self) -> list[str]:
@@ -292,23 +315,19 @@ class LocklyManager:
         await self._save()
         await self._remove_entities_for_slot(slot_id)
 
-    async def update_slot(  # noqa: PLR0913
-        self,
-        slot_id: int,
-        *,
-        name: str | None = None,
-        pin: str | None = None,
-        enabled: bool | None = None,
-        busy: bool | None = None,
-        status: str | None = None,
-        last_response: dict | None = None,
-        last_response_ts: float | None = None,
-    ) -> None:
+    async def update_slot(self, slot_id: int, **updates: Unpack[SlotUpdate]) -> None:
         """Update a slot's stored values."""
         if slot_id not in self._coordinator.data:
             message = SLOT_NOT_FOUND
             raise ServiceValidationError(message)
         slot = self._coordinator.data[slot_id]
+        name = updates.get("name")
+        pin = updates.get("pin")
+        enabled = updates.get("enabled")
+        busy = updates.get("busy")
+        status = updates.get("status")
+        last_response = updates.get("last_response")
+        last_response_ts = updates.get("last_response_ts")
         if name is not None:
             slot.name = name
         if pin is not None:
@@ -587,8 +606,8 @@ class LocklyManager:
                 self._start_action_timer(slot_id, lock_name)
                 await self._mark_slot_updating(slot_id)
                 await self._publish_lock(lock_name, payload)
-            except Exception:  # noqa: BLE001
-                LOGGER.exception("MQTT publish failed for %s", lock_name)
+            except HomeAssistantError as err:
+                LOGGER.exception("MQTT publish failed for %s: %s", lock_name, err)
             finally:
                 queue.task_done()
 
@@ -707,7 +726,7 @@ class LocklyManager:
                 blocking=True,
             )
             LOGGER.debug("MQTT publish complete to %s", topic)
-        except Exception as err:  # noqa: BLE001
+        except (HomeAssistantError, TypeError) as err:
             LOGGER.exception("MQTT publish failed for %s: %s", lock_name, err)
 
     def _dequeue_pending_slot(
@@ -764,37 +783,12 @@ class LocklyManager:
             return
         await self._complete_action(lock_name, slot_id, action)
 
-    async def handle_mqtt_state(  # noqa: PLR0911
-        self, lock_name: str, payload: dict
-    ) -> None:
+    async def handle_mqtt_state(self, lock_name: str, payload: dict) -> None:
         """Handle MQTT state updates to confirm pending actions."""
-        slot_queue = self._pending_by_lock.get(lock_name)
-        if not slot_queue:
+        match = self._match_pending_state(lock_name, payload)
+        if match is None:
             return
-        users = payload.get("users")
-        if not isinstance(users, dict):
-            return
-        slot_id = slot_queue[0]
-        action = self._pending_actions.get((slot_id, lock_name))
-        if not action or action.get("handle") is None:
-            return
-        user_entry = users.get(str(slot_id)) or users.get(slot_id)
-        if not isinstance(user_entry, dict):
-            return
-        status = user_entry.get("status")
-        if not status:
-            return
-        payload_data = action.get("payload")
-        if not isinstance(payload_data, dict):
-            return
-        pin_code = payload_data.get("pin_code")
-        if not isinstance(pin_code, dict):
-            return
-        enabled = bool(pin_code.get("user_enabled"))
-        expected_statuses = {"enabled"} if enabled else {"available", "disabled"}
-        if status not in expected_statuses:
-            return
-        action_name = "pin_code_added" if enabled else "pin_code_deleted"
+        slot_id, action_name, status = match
         LOGGER.debug(
             "Lock state matched slot %s on %s (status=%s)",
             slot_id,
@@ -807,6 +801,38 @@ class LocklyManager:
         if slot_id is None:
             return
         await self._complete_action(lock_name, slot_id, action_name)
+
+    def _match_pending_state(
+        self, lock_name: str, payload: dict
+    ) -> tuple[int, str, str] | None:
+        """Return pending slot/action details if the payload matches."""
+        slot_queue = self._pending_by_lock.get(lock_name)
+        users = payload.get("users") if slot_queue else None
+        if not slot_queue or not isinstance(users, dict):
+            return None
+        slot_id = slot_queue[0]
+        action = self._pending_actions.get((slot_id, lock_name))
+        user_entry = users.get(str(slot_id)) or users.get(slot_id)
+        status = user_entry.get("status") if isinstance(user_entry, dict) else None
+        payload_data = action.get("payload") if isinstance(action, dict) else None
+        pin_code = (
+            payload_data.get("pin_code") if isinstance(payload_data, dict) else None
+        )
+        if (
+            not action
+            or action.get("handle") is None
+            or not isinstance(user_entry, dict)
+            or not status
+            or not isinstance(payload_data, dict)
+            or not isinstance(pin_code, dict)
+        ):
+            return None
+        enabled = bool(pin_code.get("user_enabled"))
+        expected_statuses = {"enabled"} if enabled else {"available", "disabled"}
+        if status not in expected_statuses:
+            return None
+        action_name = "pin_code_added" if enabled else "pin_code_deleted"
+        return slot_id, action_name, status
 
     async def _complete_action(self, lock_name: str, slot_id: int, action: str) -> None:
         """Finalize a pending action once a response is received."""
