@@ -710,25 +710,106 @@ class LocklyManager:
         except Exception as err:  # noqa: BLE001
             LOGGER.exception("MQTT publish failed for %s: %s", lock_name, err)
 
-    async def handle_mqtt_action(self, lock_name: str, action: str) -> None:
-        """Handle MQTT action responses for a lock."""
+    def _dequeue_pending_slot(
+        self,
+        lock_name: str,
+        action: str,
+        *,
+        slot_id: int | None = None,
+        source: str,
+    ) -> int | None:
+        """Remove a pending slot for a lock, honoring explicit slot IDs."""
         slot_queue = self._pending_by_lock.get(lock_name)
         if not slot_queue:
             LOGGER.debug(
-                "Lock action ignored for %s (no pending slot): %s",
+                "Lock %s ignored for %s (no pending slot): %s",
+                source,
                 lock_name,
                 action,
             )
-            return
-        slot_id = slot_queue.pop(0)
+            return None
+        if slot_id is None:
+            slot_id = slot_queue.pop(0)
+        else:
+            try:
+                slot_queue.remove(slot_id)
+            except ValueError:
+                LOGGER.debug(
+                    "Lock %s ignored for %s (slot %s not pending): %s",
+                    source,
+                    lock_name,
+                    slot_id,
+                    action,
+                )
+                return None
         if not slot_queue:
             self._pending_by_lock.pop(lock_name, None)
         LOGGER.debug(
-            "Lock action dequeued slot %s for %s (action=%s)",
+            "Lock %s dequeued slot %s for %s (action=%s)",
+            source,
             slot_id,
             lock_name,
             action,
         )
+        return slot_id
+
+    async def handle_mqtt_action(
+        self, lock_name: str, action: str, *, action_user: int | None = None
+    ) -> None:
+        """Handle MQTT action responses for a lock."""
+        slot_id = self._dequeue_pending_slot(
+            lock_name, action, slot_id=action_user, source="action"
+        )
+        if slot_id is None:
+            return
+        await self._complete_action(lock_name, slot_id, action)
+
+    async def handle_mqtt_state(  # noqa: PLR0911
+        self, lock_name: str, payload: dict
+    ) -> None:
+        """Handle MQTT state updates to confirm pending actions."""
+        slot_queue = self._pending_by_lock.get(lock_name)
+        if not slot_queue:
+            return
+        users = payload.get("users")
+        if not isinstance(users, dict):
+            return
+        slot_id = slot_queue[0]
+        action = self._pending_actions.get((slot_id, lock_name))
+        if not action or action.get("handle") is None:
+            return
+        user_entry = users.get(str(slot_id)) or users.get(slot_id)
+        if not isinstance(user_entry, dict):
+            return
+        status = user_entry.get("status")
+        if not status:
+            return
+        payload_data = action.get("payload")
+        if not isinstance(payload_data, dict):
+            return
+        pin_code = payload_data.get("pin_code")
+        if not isinstance(pin_code, dict):
+            return
+        enabled = bool(pin_code.get("user_enabled"))
+        expected_statuses = {"enabled"} if enabled else {"available", "disabled"}
+        if status not in expected_statuses:
+            return
+        action_name = "pin_code_added" if enabled else "pin_code_deleted"
+        LOGGER.debug(
+            "Lock state matched slot %s on %s (status=%s)",
+            slot_id,
+            lock_name,
+            status,
+        )
+        slot_id = self._dequeue_pending_slot(
+            lock_name, action_name, slot_id=slot_id, source="state"
+        )
+        if slot_id is None:
+            return
+        await self._complete_action(lock_name, slot_id, action_name)
+
+    async def _complete_action(self, lock_name: str, slot_id: int, action: str) -> None:
+        """Finalize a pending action once a response is received."""
         self._cancel_action_timer(slot_id, lock_name)
         self._pending_actions.pop((slot_id, lock_name), None)
         pending_locks = self._pending_slots.get(slot_id)

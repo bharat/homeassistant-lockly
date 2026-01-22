@@ -302,7 +302,7 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
 
 
 # https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
-async def async_setup_entry(
+async def async_setup_entry(  # noqa: PLR0915
     hass: HomeAssistant,
     entry: LocklyConfigEntry,
 ) -> bool:
@@ -366,14 +366,22 @@ async def async_setup_entry(
                     return
             if not isinstance(payload, dict):
                 return
-            action = payload.get("action")
-            if not action:
-                return
             lock_name = topic[len(manager.mqtt_topic) + 1 :]
             if not lock_name:
                 return
-            LOGGER.debug("MQTT %s action: %s", topic, action)
-            await manager.handle_mqtt_action(lock_name, str(action))
+            action = payload.get("action")
+            if action:
+                action_user = payload.get("action_user")
+                if isinstance(action_user, str) and action_user.isdigit():
+                    action_user = int(action_user)
+                if not isinstance(action_user, int):
+                    action_user = None
+                LOGGER.debug("MQTT %s action: %s", topic, action)
+                await manager.handle_mqtt_action(
+                    lock_name, str(action), action_user=action_user
+                )
+                return
+            await manager.handle_mqtt_state(lock_name, payload)
 
         unsub_action: Callable[[], None] = await mqtt.async_subscribe(
             hass,
