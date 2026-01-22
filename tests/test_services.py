@@ -467,6 +467,21 @@ async def test_import_slots_rejects_invalid_payload(
 
 
 @pytest.mark.enable_socket
+async def test_import_slots_rejects_empty_payload(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test importing empty payload raises."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "import_slots",
+            {"entry_id": entry.entry_id, "payload": ""},
+            blocking=True,
+        )
+
+
+@pytest.mark.enable_socket
 async def test_handle_mqtt_action_matches_action_user(
     hass: HomeAssistant, enable_custom_integrations: Any
 ) -> None:

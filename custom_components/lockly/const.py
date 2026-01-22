@@ -26,7 +26,6 @@ JSMODULES: Final[list[dict[str, str]]] = [
 
 CONF_LOCK_NAMES = "lock_names"
 CONF_LOCK_ENTITIES = "lock_entities"
-CONF_LOCK_GROUP_NAME = "lock_group_name"
 CONF_LOCK_GROUP_ENTITY = "lock_group_entity"
 CONF_MAX_SLOTS = "max_slots"
 CONF_MQTT_TOPIC = "mqtt_topic"

@@ -174,7 +174,7 @@ admin_users:
 ```
 
 To find the entry ID, open the Lockly integration in Settings > Devices & Services
-and copy the entry ID from the browser URL.
+and copy the entry ID shown in the options dialog.
 
 In the visual editor, add the locks or lock groups that this card should manage.
 Enable "Only admins can see PINs and edit" to restrict edits and PIN visibility.

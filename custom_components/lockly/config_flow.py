@@ -145,4 +145,5 @@ class LocklyOptionsFlowHandler(config_entries.OptionsFlow):
                 },
             ),
             errors={},
+            description_placeholders={"entry_id": self._entry.entry_id},
         )

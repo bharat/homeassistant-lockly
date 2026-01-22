@@ -252,8 +252,11 @@ async def async_setup(hass: HomeAssistant, _config: dict) -> bool:  # noqa: PLR0
     async def _handle_import_slots(call: ServiceCall) -> None:
         manager = await _get_manager(call)
         payload = call.data.get("payload", "")
+        if not payload:
+            message = "invalid_payload"
+            raise ServiceValidationError(message)
         try:
-            data = json.loads(payload) if payload else {}
+            data = json.loads(payload)
         except json.JSONDecodeError as err:
             message = "invalid_payload"
             raise ServiceValidationError(message) from err
