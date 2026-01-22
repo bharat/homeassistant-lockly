@@ -15,3 +15,14 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
       - id: check-yaml
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest
+        language: system
+        types: [python]
+        args: ["tests/", "-v", "--tb=short", "--cov=custom_components.lockly"]
+        pass_filenames: false
+        always_run: true
