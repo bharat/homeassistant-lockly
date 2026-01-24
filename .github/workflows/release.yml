@@ -1,43 +1,35 @@
-name: Release
-
-permissions:
-  contents: write
+name: "Release"
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to release (e.g., v2025.9.13)'
-        required: true
+  release:
+    types:
+      - "published"
+
+permissions: {}
 
 jobs:
-  create_release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
+  release:
+    name: "Release"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
+      - name: "Checkout the repository"
+        uses: "actions/checkout@v6"
 
-      - name: Determine tag
-        id: vars
+      - name: "Adjust version number"
+        shell: "bash"
         run: |
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            TAG="${{ github.event.inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          yq -i -o json '.version="${{ github.event.release.tag_name }}"' \
+            "${{ github.workspace }}/custom_components/lockly/manifest.json"
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - name: "ZIP the integration directory"
+        shell: "bash"
+        run: |
+          cd "${{ github.workspace }}/custom_components/lockly"
+          zip lockly.zip -r ./
+
+      - name: "Upload the ZIP file to the release"
+        uses: softprops/action-gh-release@v2.5.0
         with:
-          tag_name: ${{ steps.vars.outputs.tag }}
-          name: Lockly ${{ steps.vars.outputs.tag }}
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: ${{ github.workspace }}/custom_components/lockly/lockly.zip

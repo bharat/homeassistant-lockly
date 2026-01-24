@@ -65,7 +65,7 @@ async def test_register_modules_updates_existing_and_cleans_legacy(
     legacy = {"id": "legacy", "url": "/local/lockly-card/lockly-card.js"}
     existing = {
         "id": "existing",
-        "url": f"{URL_BASE}/{module['filename']}?v=0.0.0",
+        "url": f"{URL_BASE}/{module['filename']}?v=SOMETHING_BOGUS",
     }
     resources = _ResourcesStub([legacy, existing])
     hass.data["lovelace"] = _LovelaceStub(resources)
