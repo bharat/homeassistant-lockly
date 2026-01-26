@@ -243,6 +243,19 @@ class LocklyCard extends HTMLElement {
           box-shadow: inset 0 0 0 9999px rgba(0, 0, 0, 0.04);
           cursor: pointer;
         }
+        .status-text {
+          font-weight: 600;
+        }
+        .status-timeout {
+          color: var(--error-color);
+          font-weight: 700;
+        }
+        .status-updating,
+        .status-queued,
+        .status-working {
+          color: var(--warning-color);
+          font-weight: 700;
+        }
         .slot-table.readonly .slot-row:hover td {
           box-shadow: none;
           cursor: default;
@@ -308,7 +321,7 @@ class LocklyCard extends HTMLElement {
                   <th>Slot</th>
                   <th>Name</th>
                   <th>PIN</th>
-                  <th>Enabled</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -321,16 +334,16 @@ class LocklyCard extends HTMLElement {
                     <td>${slot.name}</td>
                     <td>${slot.pin ? "****" : ""}</td>
                     <td>${slot.status === "queued"
-                ? "Queued"
+                ? '<span class="status-text status-queued">Queued</span>'
                 : slot.status === "updating"
-                  ? '<span class="busy-indicator"><span class="busy-spinner"></span>Updating</span>'
+                  ? '<span class="busy-indicator status-text status-updating"><span class="busy-spinner"></span>Updating</span>'
                   : slot.status === "timeout"
-                    ? "Timeout"
+                    ? '<span class="status-text status-timeout">Timeout</span>'
                     : slot.busy
-                      ? '<span class="busy-indicator"><span class="busy-spinner"></span>Working</span>'
+                      ? '<span class="busy-indicator status-text status-working"><span class="busy-spinner"></span>Working</span>'
                       : slot.enabled
-                        ? "Yes"
-                        : "No"
+                        ? "Enabled"
+                        : "Disabled"
               }</td>
                   </tr>
                 `
@@ -343,18 +356,16 @@ class LocklyCard extends HTMLElement {
       ${canEdit
         ? `<div class="footer-actions">
         <div class="footer-actions-left">
-          ${
-            showBulkActions
-              ? `<ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe all</ha-button>`
-              : ""
-          }
+          ${showBulkActions
+          ? `<ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe all</ha-button>`
+          : ""
+        }
         </div>
         <div class="footer-actions-right">
-          ${
-            showBulkActions
-              ? `<ha-button id="apply-all" appearance="filled">Apply all</ha-button>`
-              : ""
-          }
+          ${showBulkActions
+          ? `<ha-button id="apply-all" appearance="filled">Apply all</ha-button>`
+          : ""
+        }
           <ha-button id="add-slot" appearance="filled" variant="brand">+ Add Slot</ha-button>
         </div>
       </div>`
