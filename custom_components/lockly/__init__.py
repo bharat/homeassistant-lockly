@@ -35,7 +35,7 @@ from .const import (
 from .coordinator import LocklySlotCoordinator
 from .data import LocklyData
 from .frontend import JSModuleRegistration
-from .manager import LocklyManager
+from .manager import ApplySlotOptions, LocklyManager
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -211,8 +211,11 @@ async def _handle_apply_slot(hass: HomeAssistant, call: ServiceCall) -> None:
     manager = await _get_manager(hass, call)
     await manager.apply_slot(
         call.data["slot"],
-        lock_entities=call.data.get("lock_entities"),
-        dry_run=call.data.get("dry_run", False),
+        ApplySlotOptions(
+            lock_entities=call.data.get("lock_entities"),
+            dry_run=call.data.get("dry_run", False),
+            wait_for_completion=False,
+        ),
     )
 
 
@@ -220,8 +223,11 @@ async def _handle_push_slot(hass: HomeAssistant, call: ServiceCall) -> None:
     manager = await _get_manager(hass, call)
     await manager.apply_slot(
         call.data["slot"],
-        lock_entities=call.data.get("lock_entities"),
-        dry_run=call.data.get("dry_run", False),
+        ApplySlotOptions(
+            lock_entities=call.data.get("lock_entities"),
+            dry_run=call.data.get("dry_run", False),
+            wait_for_completion=False,
+        ),
     )
 
 

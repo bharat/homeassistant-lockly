@@ -36,13 +36,13 @@ async def _setup_entry(
     *,
     skip_timeout: bool = True,
     skip_worker: bool = True,
+    skip_mqtt: bool = True,
 ) -> MockConfigEntry:
     _ = enable_custom_integrations
     hass.data["lockly_skip_frontend"] = True
     hass.data["lockly_skip_timeout"] = skip_timeout
-    hass.data["lockly_skip_mqtt"] = True
+    hass.data["lockly_skip_mqtt"] = skip_mqtt
     hass.data["lockly_skip_worker"] = skip_worker
-    async_mock_service(hass, "mqtt", "publish")
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Lockly",

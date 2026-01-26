@@ -334,7 +334,7 @@ class LocklyCard extends HTMLElement {
                     <td>${slot.name}</td>
                     <td>${slot.pin ? "****" : ""}</td>
                     <td>${slot.status === "queued"
-                ? '<span class="status-text status-queued">Queued</span>'
+                ? '<span class="busy-indicator status-text status-queued"><span class="busy-spinner"></span>Queued</span>'
                 : slot.status === "updating"
                   ? '<span class="busy-indicator status-text status-updating"><span class="busy-spinner"></span>Updating</span>'
                   : slot.status === "timeout"
