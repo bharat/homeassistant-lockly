@@ -17,7 +17,10 @@ console.info(`%c Lockly Card ${CARD_VERSION} loaded`, BANNER_STYLE);
 
 class LocklyCard extends HTMLElement {
   setConfig(config) {
-    this._config = config || {};
+    this._config = { ...config };
+    if (!Object.prototype.hasOwnProperty.call(this._config, "show_bulk_actions")) {
+      this._config = { ...this._config, show_bulk_actions: true };
+    }
     if (!this._card) {
       this._card = document.createElement("ha-card");
       this.appendChild(this._card);
@@ -173,6 +176,7 @@ class LocklyCard extends HTMLElement {
       userNameParts.some((part) => extraAdminTokens.has(part));
     const canEdit = !adminOnly || isAdmin || isExtraAdmin;
     this._canEdit = canEdit;
+    const showBulkActions = this._config?.show_bulk_actions !== false;
     const slots = this._getSlots();
     this._card.innerHTML = `
       <style>
@@ -339,10 +343,18 @@ class LocklyCard extends HTMLElement {
       ${canEdit
         ? `<div class="footer-actions">
         <div class="footer-actions-left">
-          <ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe all</ha-button>
+          ${
+            showBulkActions
+              ? `<ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe all</ha-button>`
+              : ""
+          }
         </div>
         <div class="footer-actions-right">
-          <ha-button id="apply-all" appearance="filled">Apply all</ha-button>
+          ${
+            showBulkActions
+              ? `<ha-button id="apply-all" appearance="filled">Apply all</ha-button>`
+              : ""
+          }
           <ha-button id="add-slot" appearance="filled" variant="brand">+ Add Slot</ha-button>
         </div>
       </div>`
@@ -636,6 +648,7 @@ LocklyCard.getStubConfig = () => ({
   lock_entities: [],
   admin_only: false,
   dry_run: false,
+  show_bulk_actions: true,
 });
 LocklyCard.prototype.getConfigElement = LocklyCard.getConfigElement;
 
@@ -654,6 +667,9 @@ class LocklyCardEditor extends HTMLElement {
     }
     if (!Object.prototype.hasOwnProperty.call(this._config, "dry_run")) {
       this._config = { ...this._config, dry_run: false };
+    }
+    if (!Object.prototype.hasOwnProperty.call(this._config, "show_bulk_actions")) {
+      this._config = { ...this._config, show_bulk_actions: true };
     }
     if (!Object.prototype.hasOwnProperty.call(this._config, "admin_users")) {
       this._config = { ...this._config, admin_users: [] };
@@ -752,6 +768,7 @@ class LocklyCardEditor extends HTMLElement {
     const title = this._config?.title || "";
     const adminOnly = Boolean(this._config?.admin_only);
     const dryRun = Boolean(this._config?.dry_run);
+    const showBulkActions = this._config?.show_bulk_actions !== false;
     const lockEntities = Array.isArray(this._config?.lock_entities)
       ? this._config.lock_entities
       : [];
@@ -814,6 +831,9 @@ class LocklyCardEditor extends HTMLElement {
           <ha-formfield label="Simulation mode (no MQTT)">
             <ha-switch id="lockly-dry-run"></ha-switch>
           </ha-formfield>
+          <ha-formfield label="Show bulk actions (Apply all/Wipe all)">
+            <ha-switch id="lockly-show-bulk-actions"></ha-switch>
+          </ha-formfield>
         </div>
         <ha-textfield
           class="field"
@@ -867,6 +887,17 @@ class LocklyCardEditor extends HTMLElement {
       dryRunSwitch.checked = dryRun;
       dryRunSwitch.addEventListener("change", (ev) => {
         this._config = { ...this._config, dry_run: ev.target?.checked };
+        this._emitConfigChanged();
+      });
+    }
+    const bulkActionsSwitch = this.querySelector("#lockly-show-bulk-actions");
+    if (bulkActionsSwitch) {
+      bulkActionsSwitch.checked = showBulkActions;
+      bulkActionsSwitch.addEventListener("change", (ev) => {
+        this._config = {
+          ...this._config,
+          show_bulk_actions: ev.target?.checked,
+        };
         this._emitConfigChanged();
       });
     }
