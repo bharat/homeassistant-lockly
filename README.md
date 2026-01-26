@@ -200,7 +200,6 @@ Enable "Simulation mode (no MQTT)" to test the UI without touching locks.
 - `lockly.push_slot`
 - `lockly.apply_all`
 - `lockly.update_slot`
-- `lockly.wipe_slots`
 - `lockly.export_slots`
 - `lockly.import_slots`
 

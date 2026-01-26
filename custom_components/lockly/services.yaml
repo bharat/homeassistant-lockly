@@ -128,28 +128,6 @@ update_slot:
       selector:
         boolean:
 
-wipe_slots:
-  name: Wipe Slots
-  description: Remove all slots or the specified subset.
-  fields:
-    entry_id:
-      required: true
-      selector:
-        text:
-    lock_entities:
-      required: false
-      selector:
-        entity:
-          multiple: true
-    dry_run:
-      required: false
-      selector:
-        boolean:
-    slots:
-      required: false
-      selector:
-        text:
-
 export_slots:
   name: Export Slots
   description: Export slot data as JSON for a config entry.

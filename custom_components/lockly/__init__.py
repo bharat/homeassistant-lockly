@@ -28,7 +28,6 @@ from .const import (
     SERVICE_PUSH_SLOT,
     SERVICE_REMOVE_SLOT,
     SERVICE_UPDATE_SLOT,
-    SERVICE_WIPE_SLOTS,
     STORAGE_KEY,
     STORAGE_VERSION,
 )
@@ -61,16 +60,6 @@ SERVICE_SCHEMA_SLOT = vol.Schema(
         vol.Required("slot"): vol.Coerce(int),
         vol.Optional("lock_entities"): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("dry_run"): cv.boolean,
-    }
-)
-SERVICE_SCHEMA_WIPE = vol.Schema(
-    {
-        vol.Required("entry_id"): cv.string,
-        vol.Optional("lock_entities"): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional("dry_run"): cv.boolean,
-        vol.Optional("slots"): vol.Any(
-            cv.string, vol.All(cv.ensure_list, [vol.Coerce(int)])
-        ),
     }
 )
 SERVICE_SCHEMA_UPDATE = vol.Schema(
@@ -249,18 +238,6 @@ async def _handle_update_slot(hass: HomeAssistant, call: ServiceCall) -> None:
     )
 
 
-async def _handle_wipe(hass: HomeAssistant, call: ServiceCall) -> None:
-    manager = await _get_manager(hass, call)
-    slots = call.data.get("slots")
-    if isinstance(slots, str):
-        slots = [int(item.strip()) for item in slots.split(",") if item.strip()]
-    await manager.wipe_slots(
-        slots,
-        lock_entities=call.data.get("lock_entities"),
-        dry_run=call.data.get("dry_run", False),
-    )
-
-
 async def _handle_export_slots(hass: HomeAssistant, call: ServiceCall) -> dict:
     manager = await _get_manager(hass, call)
     include_pins = call.data.get("include_pins", False)
@@ -323,12 +300,6 @@ def _register_services(hass: HomeAssistant) -> None:
         SERVICE_UPDATE_SLOT,
         partial(_handle_update_slot, hass),
         schema=SERVICE_SCHEMA_UPDATE,
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_WIPE_SLOTS,
-        partial(_handle_wipe, hass),
-        schema=SERVICE_SCHEMA_WIPE,
     )
     hass.services.async_register(
         DOMAIN,

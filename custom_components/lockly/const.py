@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from logging import Logger, getLogger
 from pathlib import Path
 from typing import Final
@@ -12,8 +13,14 @@ LOGGER: Logger = getLogger(__package__)
 DOMAIN = "lockly"
 
 MANIFEST_PATH = Path(__file__).parent / "manifest.json"
+FRONTEND_CARD_PATH = Path(__file__).parent / "frontend" / "lockly-card.js"
 with MANIFEST_PATH.open(encoding="utf-8") as manifest_file:
     INTEGRATION_VERSION: Final[str] = json.load(manifest_file).get("version", "0.0.0")
+
+if INTEGRATION_VERSION == "0.0.0":
+    # In dev, use the card file mtime to bust the Lovelace cache.
+    with suppress(FileNotFoundError):
+        INTEGRATION_VERSION = str(int(FRONTEND_CARD_PATH.stat().st_mtime))
 
 URL_BASE = "/lockly"
 JSMODULES: Final[list[dict[str, str]]] = [
@@ -47,6 +54,5 @@ SERVICE_APPLY_SLOT = "apply_slot"
 SERVICE_PUSH_SLOT = "push_slot"
 SERVICE_APPLY_ALL = "apply_all"
 SERVICE_UPDATE_SLOT = "update_slot"
-SERVICE_WIPE_SLOTS = "wipe_slots"
 SERVICE_EXPORT_SLOTS = "export_slots"
 SERVICE_IMPORT_SLOTS = "import_slots"

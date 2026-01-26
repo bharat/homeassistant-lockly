@@ -294,13 +294,12 @@ class LocklyCard extends HTMLElement {
         }
         .footer-actions {
           display: flex;
-          justify-content: space-between;
+          justify-content: flex-end;
           align-items: center;
           gap: 8px;
           flex-wrap: wrap;
           padding: 8px 16px 16px 16px;
         }
-        .footer-actions-left,
         .footer-actions-right {
           display: flex;
           gap: 8px;
@@ -355,12 +354,6 @@ class LocklyCard extends HTMLElement {
       }
       ${canEdit
         ? `<div class="footer-actions">
-        <div class="footer-actions-left">
-          ${showBulkActions
-          ? `<ha-button id="wipe-all" class="danger" appearance="filled" variant="danger">Wipe all</ha-button>`
-          : ""
-        }
-        </div>
         <div class="footer-actions-right">
           ${showBulkActions
           ? `<ha-button id="apply-all" appearance="filled">Apply all</ha-button>`
@@ -397,20 +390,6 @@ class LocklyCard extends HTMLElement {
           data.lock_entities = lockEntities;
         }
         this._hass.callService("lockly", "apply_all", data);
-      }
-    });
-    this._card.querySelector("#wipe-all")?.addEventListener("click", () => {
-      if (
-        confirm(
-          "Remove all slots and clear their PINs from the selected locks? This cannot be undone."
-        )
-      ) {
-        const data = { entry_id: this._config.entry_id, dry_run: dryRun };
-        const lockEntities = this._getLockEntityOverrides();
-        if (lockEntities) {
-          data.lock_entities = lockEntities;
-        }
-        this._hass.callService("lockly", "wipe_slots", data);
       }
     });
     if (canEdit) {
@@ -842,7 +821,7 @@ class LocklyCardEditor extends HTMLElement {
           <ha-formfield label="Simulation mode (no MQTT)">
             <ha-switch id="lockly-dry-run"></ha-switch>
           </ha-formfield>
-          <ha-formfield label="Show bulk actions (Apply all/Wipe all)">
+          <ha-formfield label="Show Apply all button">
             <ha-switch id="lockly-show-bulk-actions"></ha-switch>
           </ha-formfield>
         </div>

@@ -230,42 +230,6 @@ async def test_remove_slot_clears_pin(
 
 
 @pytest.mark.enable_socket
-async def test_wipe_slots_subset(
-    hass: HomeAssistant, enable_custom_integrations: Any
-) -> None:
-    """Test wiping a subset clears only targeted slots."""
-    entry = await _setup_entry(hass, enable_custom_integrations)
-    mqtt_calls = async_mock_service(hass, "mqtt", "publish")
-
-    await hass.services.async_call(
-        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
-    )
-    await hass.services.async_call(
-        DOMAIN, "add_slot", {"entry_id": entry.entry_id}, blocking=True
-    )
-    manager = hass.data[DOMAIN][entry.entry_id].manager
-    await manager.update_slot(1, name="Guest1", pin="1111", enabled=True)
-    await manager.update_slot(2, name="Guest2", pin="2222", enabled=True)
-
-    await hass.services.async_call(
-        DOMAIN,
-        "wipe_slots",
-        {
-            "entry_id": entry.entry_id,
-            "slots": [1],
-            "lock_entities": ["lock.garden_upper_lock"],
-        },
-        blocking=True,
-    )
-    await hass.async_block_till_done()
-    await _wait_for_mqtt_calls(mqtt_calls, 1)
-    assert len(mqtt_calls) == 1
-    payload = json.loads(mqtt_calls[0].data["payload"])
-    assert payload["pin_code"]["user"] == 1
-    assert payload["pin_code"]["user_enabled"] is False
-
-
-@pytest.mark.enable_socket
 async def test_group_lock_entities_expand(
     hass: HomeAssistant, enable_custom_integrations: Any
 ) -> None:

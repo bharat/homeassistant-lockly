@@ -523,30 +523,6 @@ class LocklyManager:
                 ),
             )
 
-    async def wipe_slots(
-        self,
-        slot_ids: Iterable[int] | None = None,
-        *,
-        lock_entities: Iterable[str] | None = None,
-        dry_run: bool = False,
-    ) -> None:
-        """Wipe all slots or a subset."""
-        targets = (
-            list(slot_ids) if slot_ids is not None else list(self._coordinator.data)
-        )
-        for slot_id in targets:
-            if slot_id in self._coordinator.data:
-                await self.apply_slot(
-                    slot_id,
-                    ApplySlotOptions(
-                        force_clear=True,
-                        lock_entities=lock_entities,
-                        dry_run=dry_run,
-                        remove_on_complete=True,
-                        wait_for_completion=False,
-                    ),
-                )
-
     def _create_background_task(
         self, coro: Coroutine[Any, Any, Any], name: str
     ) -> asyncio.Task:
