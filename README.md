@@ -141,7 +141,7 @@ This integration is available directly in HACS under the Integration category.
 ## Configuration
 
 1. Go to Settings > Devices & Services and add the Lockly integration.
-2. Set the maximum number of slots, MQTT base topic, and update endpoint.
+2. Set the first and last slot, MQTT base topic, and update endpoint.
 
 ## Lovelace Card
 

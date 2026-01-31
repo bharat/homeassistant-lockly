@@ -6,13 +6,16 @@
                 "description": "Configure the Lockly slot manager for Zigbee2MQTT locks.",
                 "data": {
                     "name": "Name",
-                    "max_slots": "Maximum slots",
+                    "first_slot": "First slot",
+                    "last_slot": "Last slot",
                     "mqtt_topic": "Zigbee2MQTT base topic",
                     "endpoint": "Zigbee endpoint"
                 }
             }
         },
-        "error": {}
+        "error": {
+            "invalid_slot_range": "First slot must be less than or equal to last slot."
+        }
     },
     "options": {
         "step": {
@@ -21,12 +24,15 @@
                 "description": "Entry ID: {entry_id}",
                 "data": {
                     "name": "Integration entry name",
-                    "max_slots": "Maximum slots",
+                    "first_slot": "First slot",
+                    "last_slot": "Last slot",
                     "mqtt_topic": "Zigbee2MQTT base topic",
                     "endpoint": "Zigbee endpoint"
                 }
             }
         },
-        "error": {}
+        "error": {
+            "invalid_slot_range": "First slot must be less than or equal to last slot."
+        }
     }
 }

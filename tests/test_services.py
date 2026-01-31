@@ -21,10 +21,12 @@ from pytest_homeassistant_custom_component.common import (
 import custom_components.lockly.manager as lockly_manager
 from custom_components.lockly.const import (
     CONF_ENDPOINT,
-    CONF_MAX_SLOTS,
+    CONF_FIRST_SLOT,
+    CONF_LAST_SLOT,
     CONF_MQTT_TOPIC,
     DEFAULT_ENDPOINT,
-    DEFAULT_MAX_SLOTS,
+    DEFAULT_FIRST_SLOT,
+    DEFAULT_LAST_SLOT,
     DEFAULT_MQTT_TOPIC,
     DOMAIN,
 )
@@ -48,7 +50,8 @@ async def _setup_entry(
         title="Lockly",
         data={
             CONF_NAME: "Lockly",
-            CONF_MAX_SLOTS: DEFAULT_MAX_SLOTS,
+            CONF_FIRST_SLOT: DEFAULT_FIRST_SLOT,
+            CONF_LAST_SLOT: DEFAULT_LAST_SLOT,
             CONF_MQTT_TOPIC: DEFAULT_MQTT_TOPIC,
             CONF_ENDPOINT: DEFAULT_ENDPOINT,
         },

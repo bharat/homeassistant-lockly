@@ -17,14 +17,17 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_ENDPOINT,
+    CONF_FIRST_SLOT,
+    CONF_LAST_SLOT,
     CONF_LOCK_ENTITIES,
     CONF_LOCK_GROUP_ENTITY,
     CONF_LOCK_NAMES,
     CONF_MAX_SLOTS,
     CONF_MQTT_TOPIC,
     DEFAULT_ENDPOINT,
+    DEFAULT_FIRST_SLOT,
+    DEFAULT_LAST_SLOT,
     DEFAULT_LOCK_NAMES,
-    DEFAULT_MAX_SLOTS,
     DEFAULT_MQTT_TOPIC,
     LOGGER,
     PIN_REGEX,
@@ -236,10 +239,18 @@ class LocklyManager:
         return expanded
 
     @property
-    def max_slots(self) -> int:
-        """Maximum slots configured."""
+    def first_slot(self) -> int:
+        """First slot configured."""
         data = self._entry.options or self._entry.data
-        return int(data.get(CONF_MAX_SLOTS, DEFAULT_MAX_SLOTS))
+        return int(data.get(CONF_FIRST_SLOT, DEFAULT_FIRST_SLOT))
+
+    @property
+    def last_slot(self) -> int:
+        """Last slot configured."""
+        data = self._entry.options or self._entry.data
+        return int(
+            data.get(CONF_LAST_SLOT, data.get(CONF_MAX_SLOTS, DEFAULT_LAST_SLOT))
+        )
 
     @property
     def mqtt_topic(self) -> str:
@@ -305,7 +316,7 @@ class LocklyManager:
 
     def _next_available_slot(self) -> int | None:
         """Find next available slot ID."""
-        for slot_id in range(1, self.max_slots + 1):
+        for slot_id in range(self.first_slot, self.last_slot + 1):
             if slot_id not in self._coordinator.data:
                 return slot_id
         return None
@@ -426,7 +437,7 @@ class LocklyManager:
                 message = INVALID_SLOT
                 raise ServiceValidationError(message)
             slot_id = int(item["slot"])
-            if slot_id < 1 or slot_id > self.max_slots:
+            if slot_id < self.first_slot or slot_id > self.last_slot:
                 message = INVALID_SLOT
                 raise ServiceValidationError(message)
             slot = self._ensure_slot(slot_id)

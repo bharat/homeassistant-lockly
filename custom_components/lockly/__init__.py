@@ -17,6 +17,11 @@ from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 
 from .const import (
+    CONF_FIRST_SLOT,
+    CONF_LAST_SLOT,
+    CONF_MAX_SLOTS,
+    DEFAULT_FIRST_SLOT,
+    DEFAULT_MAX_SLOTS,
     DOMAIN,
     INTEGRATION_VERSION,
     LOGGER,
@@ -438,6 +443,26 @@ async def async_setup_entry(
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     hass.data[DOMAIN][entry.entry_id] = entry.runtime_data
     await _subscribe_mqtt(hass, entry, manager)
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: LocklyConfigEntry) -> bool:
+    """Migrate old config entries."""
+    if entry.version == 1:
+        data = {**entry.data}
+        options = {**entry.options}
+        first_slot = data.get(CONF_FIRST_SLOT, DEFAULT_FIRST_SLOT)
+        last_slot = data.get(
+            CONF_LAST_SLOT, data.get(CONF_MAX_SLOTS, DEFAULT_MAX_SLOTS)
+        )
+        data[CONF_FIRST_SLOT] = first_slot
+        data[CONF_LAST_SLOT] = last_slot
+        if options:
+            options.setdefault(CONF_FIRST_SLOT, first_slot)
+            options.setdefault(CONF_LAST_SLOT, last_slot)
+        hass.config_entries.async_update_entry(
+            entry, data=data, options=options, version=2
+        )
     return True
 
 

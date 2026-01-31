@@ -34,12 +34,16 @@ JSMODULES: Final[list[dict[str, str]]] = [
 CONF_LOCK_NAMES = "lock_names"
 CONF_LOCK_ENTITIES = "lock_entities"
 CONF_LOCK_GROUP_ENTITY = "lock_group_entity"
+CONF_FIRST_SLOT = "first_slot"
+CONF_LAST_SLOT = "last_slot"
 CONF_MAX_SLOTS = "max_slots"
 CONF_MQTT_TOPIC = "mqtt_topic"
 CONF_ENDPOINT = "endpoint"
 
 DEFAULT_LOCK_NAMES: list[str] = []
 DEFAULT_MAX_SLOTS = 20
+DEFAULT_FIRST_SLOT = 1
+DEFAULT_LAST_SLOT = DEFAULT_MAX_SLOTS
 DEFAULT_MQTT_TOPIC = "zigbee2mqtt"
 DEFAULT_ENDPOINT = 1
 
