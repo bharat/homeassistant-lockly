@@ -4,6 +4,6 @@ home-assistant-frontend==20260107.2
 pip==25.3
 pytest==9.0.0
 pytest-homeassistant-custom-component
-ruff==0.15.0
+ruff==0.15.1
 pre_commit==4.5.1
 yq==3.4.3
