@@ -25,7 +25,7 @@ class JSModuleRegistration:
     async def async_register(self) -> None:
         """Register static paths and Lovelace resources."""
         await self._async_register_path()
-        if self.lovelace and self.lovelace.mode == "storage":
+        if self._supports_lovelace_resources():
             await self._async_wait_for_lovelace_resources()
 
     async def _async_register_path(self) -> None:
@@ -82,7 +82,7 @@ class JSModuleRegistration:
 
     def _get_path(self, url: str) -> str:
         """Extract path without query params."""
-        return url.split("?")[0]
+        return url.split("?", maxsplit=1)[0]
 
     def _get_version(self, url: str) -> str:
         """Extract version from the query params."""
@@ -90,3 +90,14 @@ class JSModuleRegistration:
         if len(parts) > 1 and parts[1].startswith("v="):
             return parts[1].replace("v=", "")
         return "0"
+
+    def _supports_lovelace_resources(self) -> bool:
+        """Check if Lovelace resources can be managed."""
+        if not self.lovelace or not hasattr(self.lovelace, "resources"):
+            return False
+        # 2026.2+ replaces `mode` with `resource_mode`.
+        resource_mode = getattr(self.lovelace, "resource_mode", None)
+        if resource_mode is not None:
+            return resource_mode == "storage"
+        # Backwards compatibility for older cores.
+        return getattr(self.lovelace, "mode", None) == "storage"
