@@ -2,8 +2,9 @@
 # Start a Home Assistant development environment with MQTT and simulated locks.
 #
 # Usage:
-#   ./scripts/develop          # Start Mosquitto + simulator + HA
-#   ./scripts/develop --no-sim # Start Mosquitto + HA (no simulator)
+#   ./scripts/develop                # Start Mosquitto + simulator + HA
+#   ./scripts/develop --no-sim       # Start Mosquitto + HA (no simulator)
+#   ./scripts/develop --mqtt-verbose # Full MQTT protocol tracing
 #
 # All processes run in the foreground via concurrently and stop together on Ctrl+C.
 # HA is available at http://localhost:8123
@@ -22,12 +23,17 @@ echo "Integration: custom_components/lockly"
 echo ""
 
 SIM="--sim"
-if [ "${1:-}" = "--no-sim" ]; then
-    SIM=""
-fi
+MQTT_CONF="${CONFIG_DIR}/mosquitto.conf"
+
+for arg in "$@"; do
+    case "${arg}" in
+        --no-sim)       SIM="" ;;
+        --mqtt-verbose) MQTT_CONF="${CONFIG_DIR}/mosquitto-verbose.conf" ;;
+    esac
+done
 
 COMMANDS=(
-    "mosquitto -p 1883 -v"
+    "mosquitto -c ${MQTT_CONF}"
     "hass --config ${CONFIG_DIR} --debug"
 )
 NAMES="mqtt,hass"
