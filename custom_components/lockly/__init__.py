@@ -17,6 +17,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 
 from .const import (
+    ACTIVITY_STORAGE_KEY,
     CONF_FIRST_SLOT,
     CONF_LAST_SLOT,
     CONF_MAX_SLOTS,
@@ -162,6 +163,33 @@ async def _register_websocket_handlers(hass: HomeAssistant) -> None:
         connection.send_result(msg["id"], entries)
 
     websocket_api.async_register_command(hass, websocket_list_entries)
+
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/recent_activity",
+            vol.Required("entry_id"): cv.string,
+            vol.Optional("max_events", default=20): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=100)
+            ),
+        }
+    )
+    @websocket_api.async_response
+    async def websocket_recent_activity(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict,
+    ) -> None:
+        """Return recent lock activity events from the ring buffer."""
+        entry_id = msg["entry_id"]
+        max_events = msg.get("max_events", 20)
+        runtime = hass.data.get(DOMAIN, {}).get(entry_id)
+        if runtime is None:
+            connection.send_result(msg["id"], [])
+            return
+        events = runtime.manager.get_recent_activity(max_events)
+        connection.send_result(msg["id"], events)
+
+    websocket_api.async_register_command(hass, websocket_recent_activity)
 
 
 async def _register_frontend(hass: HomeAssistant) -> None:
@@ -337,10 +365,18 @@ async def _setup_entry_runtime(
 ) -> LocklyManager:
     """Create runtime data for a config entry."""
     store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}")
+    activity_store = Store(
+        hass, STORAGE_VERSION, f"{ACTIVITY_STORAGE_KEY}.{entry.entry_id}"
+    )
     coordinator = LocklySlotCoordinator(
         hass=hass, store=store, entry=entry, logger=LOGGER
     )
-    manager = LocklyManager(hass=hass, entry=entry, coordinator=coordinator)
+    manager = LocklyManager(
+        hass=hass,
+        entry=entry,
+        coordinator=coordinator,
+        activity_store=activity_store,
+    )
     manager.register_stop_listener()
     entry.runtime_data = LocklyData(
         coordinator=coordinator,
@@ -349,6 +385,7 @@ async def _setup_entry_runtime(
         subscriptions=[],
     )
     await coordinator.async_load()
+    await manager.load_activity()
     return manager
 
 

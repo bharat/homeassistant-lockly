@@ -449,9 +449,9 @@ class LocklySimulator:
             self._handle_pin_code(device_name, pin_code)
             return
 
-        sim_unlock = payload.get("simulate_unlock")
-        if sim_unlock and isinstance(sim_unlock, dict):
-            self._handle_simulated_unlock(device_name, sim_unlock)
+        sim_action = payload.get("simulate_action")
+        if sim_action and isinstance(sim_action, dict):
+            self._handle_simulated_action(device_name, sim_action)
             return
 
         new_state = payload.get("state")
@@ -465,12 +465,15 @@ class LocklySimulator:
                 state[key] = value
         self.publish_state(device_name)
 
-    def _handle_simulated_unlock(self, device_name: str, params: dict) -> None:
-        """Simulate a keypad unlock with a specific user and source."""
+    def _handle_simulated_action(self, device_name: str, params: dict) -> None:
+        """Simulate a lock action with a specific user and source."""
         state = self.device_states[device_name]
+        action = params.get("action")
+        if not action:
+            log.warning("simulate_action requires an 'action' field")
+            return
         user_id = params.get("user", 1)
         source = params.get("source", "keypad")
-        action = params.get("action", "unlock")
 
         time.sleep(random.uniform(0.1, 0.3))  # noqa: S311
 

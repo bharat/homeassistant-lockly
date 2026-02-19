@@ -28,7 +28,12 @@ JSMODULES: Final[list[dict[str, str]]] = [
         "name": "Lockly Card",
         "filename": "lockly-card.js",
         "version": INTEGRATION_VERSION,
-    }
+    },
+    {
+        "name": "Lockly Activity Card",
+        "filename": "lockly-activity-card.js",
+        "version": INTEGRATION_VERSION,
+    },
 ]
 
 CONF_LOCK_NAMES = "lock_names"
@@ -48,6 +53,7 @@ DEFAULT_MQTT_TOPIC = "zigbee2mqtt"
 DEFAULT_ENDPOINT = 1
 
 STORAGE_KEY = "lockly_slots"
+ACTIVITY_STORAGE_KEY = "lockly_activity"
 STORAGE_VERSION = 1
 
 PIN_REGEX = r"^\d{4,8}$"

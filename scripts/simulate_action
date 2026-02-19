@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Simulate a lock action (unlock, lock, etc.) on one of the simulated locks.
+#
+# Usage:
+#   scripts/simulate_action "Front Door" unlock              # unlock with user 1
+#   scripts/simulate_action "Front Door" unlock --user 3     # unlock with user 3
+#   scripts/simulate_action "Back Door" lock                 # lock
+#   scripts/simulate_action "Front Door" unlock --source rfid --user 2
+#
+# Requires: mosquitto-clients (mosquitto_pub), simulator running.
+
+set -euo pipefail
+
+LOCK=""
+ACTION=""
+USER=1
+SOURCE="keypad"
+MQTT_HOST="${MQTT_HOST:-localhost}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --user)    USER="$2"; shift 2 ;;
+        --source)  SOURCE="$2"; shift 2 ;;
+        --help|-h)
+            echo "Usage: scripts/simulate_action <lock-name> <action> [--user N] [--source keypad|rfid|manual|rf]"
+            echo ""
+            echo "Actions: unlock, lock, manual_lock, manual_unlock, key_lock, key_unlock,"
+            echo "         auto_lock, one_touch_lock"
+            echo ""
+            echo "Locks: Front Door, Back Door, Garage Door"
+            echo ""
+            echo "Examples:"
+            echo "  scripts/simulate_action \"Front Door\" unlock              # user 1 keypad unlock"
+            echo "  scripts/simulate_action \"Back Door\" unlock --user 3      # user 3 keypad unlock"
+            echo "  scripts/simulate_action \"Front Door\" lock                # keypad lock"
+            echo "  scripts/simulate_action \"Front Door\" manual_unlock       # manual unlock"
+            exit 0
+            ;;
+        -*)
+            echo "Error: unknown option '$1'" >&2
+            exit 1
+            ;;
+        *)
+            if [[ -z "${LOCK}" ]]; then
+                LOCK="$1"
+            elif [[ -z "${ACTION}" ]]; then
+                ACTION="$1"
+            else
+                echo "Error: unexpected argument '$1'" >&2
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "${LOCK}" || -z "${ACTION}" ]]; then
+    echo "Error: lock name and action required" >&2
+    echo "Usage: scripts/simulate_action <lock-name> <action> [--user N] [--source keypad|rfid|manual|rf]" >&2
+    echo "  e.g. scripts/simulate_action \"Front Door\" unlock --user 3" >&2
+    exit 1
+fi
+
+PAYLOAD=$(printf '{"simulate_action": {"user": %d, "source": "%s", "action": "%s"}}' "${USER}" "${SOURCE}" "${ACTION}")
+TOPIC="zigbee2mqtt/${LOCK}/set"
+
+echo "${ACTION} → ${LOCK} (user=${USER}, source=${SOURCE})"
+mosquitto_pub -h "${MQTT_HOST}" -t "${TOPIC}" -m "${PAYLOAD}"

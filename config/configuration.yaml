@@ -12,6 +12,8 @@ config:
 my:
 automation: !include automations.yaml
 recorder:
+logbook:
+history:
 
 logger:
   default: info

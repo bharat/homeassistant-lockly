@@ -8,6 +8,7 @@ from homeassistant.components.event import EventEntity
 from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN, LOGGER
+from .logbook import EVENT_LOCKLY_LOCK_ACTIVITY
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -63,12 +64,24 @@ class LocklyLockEvent(EventEntity):
         )
 
     def fire_action(self, event_type: str, event_data: dict) -> None:
-        """Trigger a lock action event."""
+        """Trigger a lock action event and fire a bus event for the logbook."""
         if event_type not in LOCK_ACTION_EVENTS:
             LOGGER.debug("Unknown lock event type: %s", event_type)
             return
         self._trigger_event(event_type, event_data)
         self.async_write_ha_state()
+
+        self.hass.bus.async_fire(
+            EVENT_LOCKLY_LOCK_ACTIVITY,
+            {
+                "lock": self._lock_name,
+                "action": event_type,
+                "user_name": event_data.get("user_name"),
+                "slot_id": event_data.get("slot_id"),
+                "source": event_data.get("source"),
+                "entity_id": self.entity_id,
+            },
+        )
 
 
 async def async_setup_entry(

@@ -75,7 +75,8 @@ async def test_register_modules_updates_existing_and_cleans_legacy(
     await registration.async_register()
 
     resources.async_delete_item.assert_awaited_once_with("legacy")
-    resources.async_update_item.assert_awaited_once()
+    assert resources.async_update_item.await_count == 1
+    assert resources.async_create_item.await_count == len(JSMODULES) - 1
 
 
 @pytest.mark.asyncio
@@ -88,4 +89,4 @@ async def test_register_modules_creates_when_missing(hass: HomeAssistant) -> Non
 
     await registration.async_register()
 
-    resources.async_create_item.assert_awaited_once()
+    assert resources.async_create_item.await_count == len(JSMODULES)
