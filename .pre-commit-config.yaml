@@ -23,6 +23,7 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
       - id: check-yaml
+        args: ["--unsafe"]
 
   - repo: local
     hooks:

@@ -1,12 +1,22 @@
-# https://www.home-assistant.io/integrations/default_config/
-default_config:
+# Home Assistant development config for Lockly
+#
+# We avoid default_config: because it pulls in go2rtc, stream, etc.
+# which require binaries not present in the devcontainer. Instead we
+# include only the components we actually need.
 
-# https://www.home-assistant.io/integrations/homeassistant/
 homeassistant:
   debug: true
 
-# https://www.home-assistant.io/integrations/logger/
+frontend:
+config:
+my:
+automation: !include automations.yaml
+recorder:
+
 logger:
   default: info
   logs:
     custom_components.lockly: debug
+
+# MQTT is configured via the UI (Settings > Integrations > MQTT).
+# After first launch, add MQTT with broker: localhost, port: 1883.

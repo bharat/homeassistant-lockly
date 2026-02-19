@@ -1,20 +1,47 @@
 #!/usr/bin/env bash
+# Start a Home Assistant development environment with MQTT and simulated locks.
+#
+# Usage:
+#   ./scripts/develop          # Start Mosquitto + simulator + HA
+#   ./scripts/develop --no-sim # Start Mosquitto + HA (no simulator)
+#
+# All processes run in the foreground via concurrently and stop together on Ctrl+C.
+# HA is available at http://localhost:8123
 
-set -e
-
+set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Create config dir if not present
-if [[ ! -d "${PWD}/config" ]]; then
-    mkdir -p "${PWD}/config"
-    hass --config "${PWD}/config" --script ensure_config
+SCRIPT_DIR="$(pwd)"
+CONFIG_DIR="${SCRIPT_DIR}/config"
+
+export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
+
+echo "=== Lockly Development Server ==="
+echo "Config:  ${CONFIG_DIR}"
+echo "Integration: custom_components/lockly"
+echo ""
+
+SIM="--sim"
+if [ "${1:-}" = "--no-sim" ]; then
+    SIM=""
 fi
 
-# Set the path to custom_components
-## This let's us have the structure we want <root>/custom_components/lockly
-## while at the same time have Home Assistant configuration inside <root>/config
-## without resulting to symlinks.
-export PYTHONPATH="${PYTHONPATH}:${PWD}/custom_components"
+COMMANDS=(
+    "mosquitto -p 1883 -v"
+    "hass --config ${CONFIG_DIR} --debug"
+)
+NAMES="mqtt,hass"
+COLORS="blue,magenta"
 
-# Start Home Assistant
-hass --config "${PWD}/config" --debug
+if [ -n "${SIM}" ]; then
+    COMMANDS+=("python3 scripts/simulate_devices.py")
+    NAMES="${NAMES},sim"
+    COLORS="${COLORS},green"
+fi
+
+concurrently \
+    --kill-others \
+    --names "${NAMES}" \
+    --prefix-colors "${COLORS}" \
+    --prefix "[{name}]" \
+    "${COMMANDS[@]}"
