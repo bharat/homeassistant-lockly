@@ -22,4 +22,5 @@ class LocklyEntity(CoordinatorEntity[LocklySlotCoordinator]):
                     coordinator.config_entry.entry_id,
                 ),
             },
+            name=coordinator.config_entry.title,
         )

@@ -44,19 +44,23 @@ class LocklyLockEvent(EventEntity):
     _attr_has_entity_name = True
     _attr_event_types = LOCK_ACTION_EVENTS
 
-    def __init__(self, entry_id: str, lock_name: str) -> None:
+    def __init__(self, entry_id: str, entry_title: str, lock_name: str) -> None:
         """Initialize the lock event entity."""
         slug = lock_name.lower().replace(" ", "_").replace("-", "_")
         self._attr_unique_id = f"{entry_id}-lock-event-{slug}"
         self._attr_name = lock_name
         self._attr_icon = "mdi:lock-clock"
         self._entry_id = entry_id
+        self._entry_title = entry_title
         self._lock_name = lock_name
 
     @property
     def device_info(self) -> DeviceInfo:
         """Associate with the Lockly config entry device."""
-        return DeviceInfo(identifiers={(DOMAIN, self._entry_id)})
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry_id)},
+            name=self._entry_title,
+        )
 
     def fire_action(self, event_type: str, event_data: dict) -> None:
         """Trigger a lock action event."""
@@ -82,7 +86,7 @@ async def async_setup_entry(
 
     def handle_lock_event(lock_name: str, event_type: str, event_data: dict) -> None:
         if lock_name not in entities:
-            entity = LocklyLockEvent(entry.entry_id, lock_name)
+            entity = LocklyLockEvent(entry.entry_id, entry.title, lock_name)
             entities[lock_name] = entity
             async_add_entities([entity])
             LOGGER.debug("Created event entity for lock: %s", lock_name)

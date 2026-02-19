@@ -108,7 +108,6 @@ def _device_block(dev: dict, _topic: str) -> dict:
         "manufacturer": defn["vendor"],
         "model": defn["model"],
         "name": dev["friendly_name"],
-        "via_device": "zigbee2mqtt_bridge",
     }
 
 
@@ -537,6 +536,7 @@ class LocklySimulator:
             json.dumps({"state": "online"}),
             retain=True,
         )
+
         for dev in DEVICES:
             for disco_topic, disco_payload in build_all_discovery_payloads(
                 dev, self.topic
