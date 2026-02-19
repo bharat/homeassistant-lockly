@@ -85,7 +85,7 @@ function escapeHtml(str) {
 
 class LocklyActivityCard extends HTMLElement {
   setConfig(config) {
-    this._config = { view: "recent", max_events: 20, ...config };
+    this._config = { view: "recent", max_events: 5, ...config };
     if (!this._card) {
       this._card = document.createElement("ha-card");
       this.appendChild(this._card);
@@ -127,7 +127,7 @@ class LocklyActivityCard extends HTMLElement {
       const events = await this._hass.connection.sendMessagePromise({
         type: WS_ACTIVITY_TYPE,
         entry_id: this._config.entry_id,
-        max_events: this._config.max_events || 20,
+        max_events: this._config.max_events || 5,
       });
       this._events = events || [];
       this._render();
@@ -203,28 +203,34 @@ class LocklyActivityCard extends HTMLElement {
           font-weight: 500;
           color: var(--primary-text-color);
         }
-        .la-seg {
+        .la-tabs {
           display: inline-flex;
-          border: 1px solid var(--divider-color, rgba(0,0,0,0.12));
-          border-radius: 8px;
-          overflow: hidden;
-          font-size: 0.75rem;
-          font-weight: 500;
+          gap: 2px;
+          font-size: 0.8rem;
         }
-        .la-seg button {
+        .la-tabs button {
           cursor: pointer;
           border: none;
-          padding: 4px 10px;
           background: none;
+          padding: 2px 6px;
           color: var(--secondary-text-color);
-          transition: background 0.15s, color 0.15s;
+          font-weight: 400;
+          font-size: inherit;
+          opacity: 0.7;
         }
-        .la-seg button.active {
-          background: var(--primary-color);
-          color: var(--text-primary-color, #fff);
+        .la-tabs button:hover {
+          opacity: 1;
         }
-        .la-seg button:not(.active):hover {
-          background: var(--divider-color, rgba(0,0,0,0.04));
+        .la-tabs button.active {
+          color: var(--primary-color);
+          font-weight: 500;
+          opacity: 1;
+        }
+        .la-tabs .la-sep {
+          color: var(--divider-color, rgba(0,0,0,0.2));
+          font-weight: 300;
+          align-self: center;
+          font-size: 0.75rem;
         }
         .la-list {
           padding: 0 16px 16px;
@@ -317,8 +323,9 @@ class LocklyActivityCard extends HTMLElement {
       </style>
       <div class="la-header">
         <span class="la-title">${escapeHtml(title)}</span>
-        <div class="la-seg">
+        <div class="la-tabs">
           <button data-view="recent" class="${isPerLock ? "" : "active"}">Recent</button>
+          <span class="la-sep">|</span>
           <button data-view="per_lock" class="${isPerLock ? "active" : ""}">Per Lock</button>
         </div>
       </div>
@@ -328,7 +335,7 @@ class LocklyActivityCard extends HTMLElement {
           : '<div class="la-empty">No lock activity yet</div>'
       }`;
 
-    this._card.querySelectorAll(".la-seg button").forEach((btn) => {
+    this._card.querySelectorAll(".la-tabs button").forEach((btn) => {
       btn.addEventListener("click", () => {
         const view = btn.getAttribute("data-view");
         if (view && view !== this._config.view) {
@@ -425,7 +432,7 @@ LocklyActivityCard.getStubConfig = () => ({
   title: "Lock Activity",
   entry_id: "",
   view: "recent",
-  max_events: 20,
+  max_events: 5,
 });
 LocklyActivityCard.prototype.getConfigElement =
   LocklyActivityCard.getConfigElement;
@@ -441,7 +448,7 @@ class LocklyActivityCardEditor extends HTMLElement {
     this._config = {
       title: "Lock Activity",
       view: "recent",
-      max_events: 20,
+      max_events: 5,
       ...config,
     };
     this._needsRender = true;
@@ -503,7 +510,7 @@ class LocklyActivityCardEditor extends HTMLElement {
     const selected = this._config?.entry_id || "";
     const title = this._config?.title || "";
     const view = this._config?.view || "recent";
-    const maxEvents = this._config?.max_events || 20;
+    const maxEvents = this._config?.max_events || 5;
 
     const entrySelect =
       entries.length > 1
