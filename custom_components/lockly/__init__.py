@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from .data import LocklyConfigEntry
 
 PLATFORMS: list[Platform] = [
+    Platform.EVENT,
     Platform.SENSOR,
 ]
 
@@ -411,9 +412,16 @@ async def _subscribe_mqtt(
                 action_user = int(action_user)
             if not isinstance(action_user, int):
                 action_user = None
+            action_source_name = payload.get("action_source_name")
+            if not isinstance(action_source_name, str):
+                action_source_name = None
             LOGGER.debug("MQTT %s action: %s", topic, action)
             await manager.handle_mqtt_action(
-                lock_name, str(action), action_user=action_user
+                lock_name,
+                str(action),
+                action_user=action_user,
+                action_source_name=action_source_name,
+                fire_lock_event=True,
             )
             return
         await manager.handle_mqtt_state(lock_name, payload)

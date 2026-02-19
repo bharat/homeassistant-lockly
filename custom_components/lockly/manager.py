@@ -114,6 +114,7 @@ class LocklyManager:
         self._slot_worker_task: asyncio.Task | None = None
         self._slot_completion: dict[int, asyncio.Future[None]] = {}
         self._remove_after_apply: set[int] = set()
+        self._lock_event_callback: Callable[[str, str, dict], None] | None = None
 
     @property
     def group_entity_id(self) -> str | None:
@@ -892,10 +893,52 @@ class LocklyManager:
         )
         return slot_id
 
+    def register_lock_event_callback(
+        self, callback: Callable[[str, str, dict], None]
+    ) -> None:
+        """Register a callback for lock action events (used by event platform)."""
+        self._lock_event_callback = callback
+
+    def _fire_lock_event(
+        self,
+        lock_name: str,
+        action: str,
+        action_user: int | None,
+        action_source_name: str | None,
+    ) -> None:
+        """Resolve action_user to a slot name and fire the lock event entity."""
+        if not self._lock_event_callback:
+            return
+
+        user_name: str | None = None
+        if action_user is not None:
+            slot = self._coordinator.data.get(action_user)
+            if slot and slot.name:
+                user_name = slot.name
+
+        event_data: dict[str, object] = {"lock": lock_name}
+        if user_name:
+            event_data["user_name"] = user_name
+        if action_user is not None:
+            event_data["slot_id"] = action_user
+        if action_source_name:
+            event_data["source"] = action_source_name
+
+        self._lock_event_callback(lock_name, action, event_data)
+
     async def handle_mqtt_action(
-        self, lock_name: str, action: str, *, action_user: int | None = None
+        self,
+        lock_name: str,
+        action: str,
+        *,
+        action_user: int | None = None,
+        action_source_name: str | None = None,
+        fire_lock_event: bool = False,
     ) -> None:
         """Handle MQTT action responses for a lock."""
+        if fire_lock_event:
+            self._fire_lock_event(lock_name, action, action_user, action_source_name)
+
         slot_id = self._dequeue_pending_slot(
             lock_name, action, slot_id=action_user, source="action"
         )
