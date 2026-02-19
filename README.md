@@ -107,6 +107,25 @@ and safe.
       </a>
     </td>
   </tr>
+  <tr>
+    <td width="40%">
+      <strong>See who unlocked your doors</strong><br />
+      The Lock Activity card shows recent lock events across all your managed
+      locks — who unlocked, how, and when. Toggle between a chronological feed
+      and a per-lock summary. Click any entry to jump to that lock's history.
+    </td>
+    <td width="60%">
+      <a href="assets/lockly-activity-card.png">
+        <img
+          src="assets/lockly-activity-card.png"
+          alt="Lockly activity card"
+          width="480"
+          height="480"
+          style="object-fit: cover; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
 </table>
 
 ## What you can do
@@ -121,6 +140,8 @@ and safe.
 - Simulate changes without sending MQTT commands.
 - Choose a Lockly instance per card and preview the card live while configuring.
 - Pick locks and lock groups directly from the visual editor.
+- Track lock activity — see who unlocked each door, when, and how (keypad, RFID, manual, remote).
+- Activity data persists across restarts and integrates with HA's built-in logbook.
 
 ## Installation (HACS)
 
@@ -175,6 +196,23 @@ admin_users:
 
 To find the entry ID, open the Lockly integration in Settings > Devices & Services
 and copy the entry ID shown in the options dialog.
+
+### Activity Card
+
+The Lock Activity card shows recent lock events — who unlocked, the method, and
+when. It supports two views: **Recent** (chronological) and **Per Lock** (latest
+event per lock). Activity survives HA restarts and also appears as rich entries
+in the built-in logbook.
+
+```yaml
+type: custom:lockly-activity-card
+entry_id: YOUR_ENTRY_ID
+title: Lock Activity
+view: recent
+max_events: 5
+```
+
+### Slot Management Card
 
 In the visual editor, add the locks or lock groups that this card should manage.
 Enable "Only admins can see PINs and edit" to restrict edits and PIN visibility.
