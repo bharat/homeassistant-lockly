@@ -1,7 +1,5 @@
 """Tests for Lockly services."""
 
-# ruff: noqa: S101
-
 import asyncio
 import json
 import time

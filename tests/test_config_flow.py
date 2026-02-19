@@ -1,7 +1,5 @@
 """Tests for Lockly config flow."""
 
-# ruff: noqa: S101
-
 from typing import Any
 
 import pytest

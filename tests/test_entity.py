@@ -1,7 +1,5 @@
 """Tests for Lockly entity base class."""
 
-# ruff: noqa: S101
-
 from collections.abc import Callable
 from typing import Any
 
