@@ -16,6 +16,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 
+from .activity import ActivityBuffer
 from .const import (
     ACTIVITY_STORAGE_KEY,
     CONF_FIRST_SLOT,
@@ -242,18 +243,6 @@ async def _handle_apply_slot(hass: HomeAssistant, call: ServiceCall) -> None:
     )
 
 
-async def _handle_push_slot(hass: HomeAssistant, call: ServiceCall) -> None:
-    manager = await _get_manager(hass, call)
-    await manager.apply_slot(
-        call.data["slot"],
-        ApplySlotOptions(
-            lock_entities=call.data.get("lock_entities"),
-            dry_run=call.data.get("dry_run", False),
-            wait_for_completion=False,
-        ),
-    )
-
-
 async def _handle_apply_all(hass: HomeAssistant, call: ServiceCall) -> None:
     manager = await _get_manager(hass, call)
     await manager.apply_all(
@@ -320,7 +309,7 @@ def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN,
         SERVICE_PUSH_SLOT,
-        partial(_handle_push_slot, hass),
+        partial(_handle_apply_slot, hass),
         schema=SERVICE_SCHEMA_SLOT,
     )
     hass.services.async_register(
@@ -368,6 +357,7 @@ async def _setup_entry_runtime(
     activity_store = Store(
         hass, STORAGE_VERSION, f"{ACTIVITY_STORAGE_KEY}.{entry.entry_id}"
     )
+    activity = ActivityBuffer(hass, activity_store)
     coordinator = LocklySlotCoordinator(
         hass=hass, store=store, entry=entry, logger=LOGGER
     )
@@ -375,7 +365,7 @@ async def _setup_entry_runtime(
         hass=hass,
         entry=entry,
         coordinator=coordinator,
-        activity_store=activity_store,
+        activity=activity,
     )
     manager.register_stop_listener()
     entry.runtime_data = LocklyData(
@@ -385,7 +375,7 @@ async def _setup_entry_runtime(
         subscriptions=[],
     )
     await coordinator.async_load()
-    await manager.load_activity()
+    await activity.async_load()
     return manager
 
 
@@ -407,6 +397,7 @@ async def _subscribe_mqtt(
         return
 
     async def _handle_action_message(msg: mqtt.ReceiveMessage) -> None:
+        """Handle raw action string from {topic}/+/action (slot confirmation)."""
         topic = msg.topic
         payload = msg.payload
         if isinstance(payload, bytes):
@@ -414,18 +405,15 @@ async def _subscribe_mqtt(
                 payload = payload.decode()
             except UnicodeDecodeError:
                 payload = payload.decode(errors="replace")
-        if not topic.endswith("/action"):
-            return
         lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
         if not lock_name:
             return
         LOGGER.debug("MQTT %s: %s", topic, payload)
         await manager.handle_mqtt_action(lock_name, str(payload))
 
-    async def _handle_state_action(msg: mqtt.ReceiveMessage) -> None:
+    async def _handle_state_payload(msg: mqtt.ReceiveMessage) -> None:
+        """Handle JSON state from {topic}/+ (actions, state changes)."""
         topic = msg.topic
-        if topic.endswith("/action"):
-            return
         payload = msg.payload
         if isinstance(payload, bytes):
             try:
@@ -471,7 +459,7 @@ async def _subscribe_mqtt(
     unsub_state: Callable[[], None] = await mqtt.async_subscribe(
         hass,
         f"{manager.mqtt_topic}/+",
-        _handle_state_action,
+        _handle_state_payload,
     )
     entry.runtime_data.subscriptions.extend([unsub_action, unsub_state])
 
@@ -483,10 +471,10 @@ async def async_setup_entry(
 ) -> bool:
     """Set up this integration using UI."""
     manager = await _setup_entry_runtime(hass, entry)
+    hass.data[DOMAIN][entry.entry_id] = entry.runtime_data
     _cleanup_legacy_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-    hass.data[DOMAIN][entry.entry_id] = entry.runtime_data
     await _subscribe_mqtt(hass, entry, manager)
     return True
 

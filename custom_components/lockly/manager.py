@@ -6,17 +6,14 @@ import asyncio
 import json
 import re
 import time
-from collections import deque
 from collections.abc import Callable, Coroutine, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, Unpack
 
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.event import async_call_later
 
 from .const import (
     CONF_ENDPOINT,
@@ -39,8 +36,8 @@ from .coordinator import LocklySlot, LocklySlotCoordinator
 
 if TYPE_CHECKING:
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
-    from homeassistant.helpers.storage import Store
 
+    from .activity import ActivityBuffer
     from .data import LocklyConfigEntry
 
 EntityFactory = Callable[[LocklySlot], list]
@@ -98,7 +95,7 @@ class LocklyManager:
         hass: HomeAssistant,
         entry: LocklyConfigEntry,
         coordinator: LocklySlotCoordinator,
-        activity_store: Store | None = None,
+        activity: ActivityBuffer | None = None,
     ) -> None:
         """Initialize the manager."""
         self._hass = hass
@@ -120,9 +117,7 @@ class LocklyManager:
         self._slot_completion: dict[int, asyncio.Future[None]] = {}
         self._remove_after_apply: set[int] = set()
         self._lock_event_callback: Callable[[str, str, dict], None] | None = None
-        self._activity_buffer: deque[dict[str, object]] = deque(maxlen=100)
-        self._activity_store: Store | None = activity_store
-        self._activity_save_unsub: CALLBACK_TYPE | None = None
+        self._activity = activity
 
     @property
     def group_entity_id(self) -> str | None:
@@ -929,44 +924,17 @@ class LocklyManager:
         if action_source_name:
             event_data["source"] = action_source_name
 
-        self._activity_buffer.append(
-            {
-                **event_data,
-                "action": action,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
-        self._schedule_activity_save()
+        if self._activity:
+            self._activity.append(event_data, action)
 
         if self._lock_event_callback:
             self._lock_event_callback(lock_name, action, event_data)
 
     def get_recent_activity(self, max_events: int = 20) -> list[dict[str, object]]:
         """Return recent lock activity events, newest first."""
-        events = list(self._activity_buffer)
-        events.reverse()
-        return events[:max_events]
-
-    async def load_activity(self) -> None:
-        """Load persisted activity events into the in-memory buffer."""
-        if self._activity_store is None:
-            return
-        data = await self._activity_store.async_load()
-        if data and isinstance(data, list):
-            self._activity_buffer.extend(data)
-
-    async def _save_activity(self, *_: object) -> None:
-        """Persist the current activity buffer to disk."""
-        self._activity_save_unsub = None
-        if self._activity_store is None:
-            return
-        await self._activity_store.async_save(list(self._activity_buffer))
-
-    def _schedule_activity_save(self) -> None:
-        """Debounce activity saves to at most once per second."""
-        if self._activity_save_unsub is not None:
-            return
-        self._activity_save_unsub = async_call_later(self._hass, 1, self._save_activity)
+        if self._activity is None:
+            return []
+        return self._activity.recent(max_events)
 
     async def handle_mqtt_action(
         self,

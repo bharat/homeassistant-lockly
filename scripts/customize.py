@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Interactive repository customizer for Home Assistant integration blueprint.
+"""Interactive repository customizer for Home Assistant integration blueprint.
 
 This script:
 - Parses the Git origin to infer `username/repo`.
@@ -35,8 +34,7 @@ class RepoInfo:
 
 
 def read_origin_from_git_config(repo_root: Path) -> str | None:
-    """
-    Read the origin from the Git config file.
+    """Read the origin from the Git config file.
 
     Use best-effort strategies:
     1) Read from the Git config file, handling both .git directory and .git file
@@ -139,8 +137,7 @@ def to_snake_case(name: str) -> str:
 
 
 def to_camel_caps(name: str) -> str:
-    """
-    Convert a name to CamelCaps, preserving existing CamelCase/PascalCase.
+    """Convert a name to CamelCaps, preserving existing CamelCase/PascalCase.
 
     - If the input is already camel/PascalCase without separators, keep it
       (ensure leading capital).
@@ -335,8 +332,7 @@ def ensure_precommit_requirement(req_path: Path, version_pin: str = "3.5.0") -> 
 
 
 def ensure_dod_in_devcontainer(repo_root: Path) -> bool:
-    """
-    Ensure Docker-outside-of-Docker feature and docker.sock mount are set.
+    """Ensure Docker-outside-of-Docker feature and docker.sock mount are set.
 
     Returns True if the file was modified.
     """
@@ -377,8 +373,7 @@ def ensure_dod_in_devcontainer(repo_root: Path) -> bool:
 
 
 def rename_with_git_mv(old_path: Path, new_path: Path, repo_root: Path) -> bool:
-    """
-    Rename using a filesystem move.
+    """Rename using a filesystem move.
 
     Returns True if a rename was performed.
     """

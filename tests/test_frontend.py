@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.lockly.const import JSMODULES, URL_BASE
+from custom_components.lockly.const import URL_BASE, get_jsmodules
 from custom_components.lockly.frontend import JSModuleRegistration
 
 
@@ -61,7 +61,8 @@ async def test_register_modules_updates_existing_and_cleans_legacy(
     hass: HomeAssistant,
 ) -> None:
     """Ensure legacy resources are removed and existing are updated."""
-    module = JSMODULES[0]
+    modules = get_jsmodules()
+    module = modules[0]
     legacy = {"id": "legacy", "url": "/local/lockly-card/lockly-card.js"}
     existing = {
         "id": "existing",
@@ -76,7 +77,7 @@ async def test_register_modules_updates_existing_and_cleans_legacy(
 
     resources.async_delete_item.assert_awaited_once_with("legacy")
     assert resources.async_update_item.await_count == 1
-    assert resources.async_create_item.await_count == len(JSMODULES) - 1
+    assert resources.async_create_item.await_count == len(modules) - 1
 
 
 @pytest.mark.asyncio
@@ -89,4 +90,4 @@ async def test_register_modules_creates_when_missing(hass: HomeAssistant) -> Non
 
     await registration.async_register()
 
-    assert resources.async_create_item.await_count == len(JSMODULES)
+    assert resources.async_create_item.await_count == len(get_jsmodules())

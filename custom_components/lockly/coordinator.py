@@ -31,7 +31,13 @@ class LocklySlot:
 
 
 class LocklySlotCoordinator(DataUpdateCoordinator[dict[int, LocklySlot]]):
-    """Coordinator for Lockly slot state."""
+    """Coordinator for Lockly slot state.
+
+    This is a push-based coordinator (update_interval=None). Data is never
+    polled; instead, LocklyManager calls ``async_set_updated_data`` when
+    slot state changes.  We extend DataUpdateCoordinator solely to get its
+    listener/subscription machinery used by CoordinatorEntity subclasses.
+    """
 
     config_entry: LocklyConfigEntry
 

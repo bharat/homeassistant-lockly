@@ -85,16 +85,12 @@ class LocklyLockEvent(EventEntity):
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    _hass: HomeAssistant,
     entry: LocklyConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Lockly event entities."""
-    runtime = hass.data[DOMAIN].get(entry.entry_id)
-    if runtime is None:
-        return
-
-    manager = runtime.manager
+    manager = entry.runtime_data.manager
     entities: dict[str, LocklyLockEvent] = {}
 
     def handle_lock_event(lock_name: str, event_type: str, event_data: dict) -> None:

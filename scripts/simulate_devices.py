@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Simulate Lockly Z2M lock devices for development.
+"""Simulate Lockly Z2M lock devices for development.
 
 Publishes fake Zigbee2MQTT MQTT messages for 3 simulated Yale Assure locks
 so the integration can be developed and tested without real hardware.

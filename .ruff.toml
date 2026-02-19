@@ -10,7 +10,7 @@ select = [
 ignore = [
     "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
     "D203", # no-blank-line-before-class (incompatible with formatter)
-    "D212", # multi-line-summary-first-line (incompatible with formatter)
+    "D213", # multi-line-summary-second-line (incompatible with D212)
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
 ]
@@ -25,4 +25,4 @@ keep-runtime-typing = true
 max-complexity = 25
 
 [lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "D103", "D104", "PLR2004", "ARG001"]

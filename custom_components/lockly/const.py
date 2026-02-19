@@ -6,35 +6,53 @@ import json
 from contextlib import suppress
 from logging import Logger, getLogger
 from pathlib import Path
-from typing import Final
 
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "lockly"
 
-MANIFEST_PATH = Path(__file__).parent / "manifest.json"
-FRONTEND_CARD_PATH = Path(__file__).parent / "frontend" / "lockly-card.js"
-with MANIFEST_PATH.open(encoding="utf-8") as manifest_file:
-    INTEGRATION_VERSION: Final[str] = json.load(manifest_file).get("version", "0.0.0")
-
-if INTEGRATION_VERSION == "0.0.0":
-    # In dev, use the card file mtime to bust the Lovelace cache.
-    with suppress(FileNotFoundError):
-        INTEGRATION_VERSION = str(int(FRONTEND_CARD_PATH.stat().st_mtime))
-
+_PACKAGE_DIR = Path(__file__).parent
 URL_BASE = "/lockly"
-JSMODULES: Final[list[dict[str, str]]] = [
-    {
-        "name": "Lockly Card",
-        "filename": "lockly-card.js",
-        "version": INTEGRATION_VERSION,
-    },
-    {
-        "name": "Lockly Activity Card",
-        "filename": "lockly-activity-card.js",
-        "version": INTEGRATION_VERSION,
-    },
-]
+
+
+def _resolve_version() -> str:
+    """Read version from manifest.json.
+
+    Called once at module load (before the event loop starts) so the
+    result is cached and never triggers blocking I/O inside async code.
+    """
+    version = "0.0.0"
+    with (
+        suppress(FileNotFoundError, json.JSONDecodeError),
+        (_PACKAGE_DIR / "manifest.json").open(encoding="utf-8") as fh,
+    ):
+        version = json.load(fh).get("version", "0.0.0")
+    if version == "0.0.0":
+        with suppress(FileNotFoundError):
+            version = str(
+                int((_PACKAGE_DIR / "frontend" / "lockly-card.js").stat().st_mtime)
+            )
+    return version
+
+
+INTEGRATION_VERSION: str = _resolve_version()
+
+
+def get_jsmodules() -> list[dict[str, str]]:
+    """Return JS module descriptors."""
+    return [
+        {
+            "name": "Lockly Card",
+            "filename": "lockly-card.js",
+            "version": INTEGRATION_VERSION,
+        },
+        {
+            "name": "Lockly Activity Card",
+            "filename": "lockly-activity-card.js",
+            "version": INTEGRATION_VERSION,
+        },
+    ]
+
 
 CONF_LOCK_NAMES = "lock_names"
 CONF_LOCK_ENTITIES = "lock_entities"

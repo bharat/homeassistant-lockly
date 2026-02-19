@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.helpers.event import async_call_later
 
-from custom_components.lockly.const import JSMODULES, URL_BASE
+from custom_components.lockly.const import URL_BASE, get_jsmodules
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -60,7 +60,7 @@ class JSModuleRegistration:
         for resource in legacy_resources:
             await self.lovelace.resources.async_delete_item(resource["id"])
         existing = [item for item in existing if item["url"].startswith(URL_BASE)]
-        for module in JSMODULES:
+        for module in get_jsmodules():
             url = f"{URL_BASE}/{module['filename']}"
             registered = False
             for resource in existing:
