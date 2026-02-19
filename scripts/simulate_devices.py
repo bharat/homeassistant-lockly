@@ -449,6 +449,11 @@ class LocklySimulator:
             self._handle_pin_code(device_name, pin_code)
             return
 
+        sim_unlock = payload.get("simulate_unlock")
+        if sim_unlock and isinstance(sim_unlock, dict):
+            self._handle_simulated_unlock(device_name, sim_unlock)
+            return
+
         new_state = payload.get("state")
         if new_state in ("LOCK", "UNLOCK"):
             self._handle_lock_command(device_name, new_state)
@@ -458,6 +463,31 @@ class LocklySimulator:
         for key, value in payload.items():
             if key in state:
                 state[key] = value
+        self.publish_state(device_name)
+
+    def _handle_simulated_unlock(self, device_name: str, params: dict) -> None:
+        """Simulate a keypad unlock with a specific user and source."""
+        state = self.device_states[device_name]
+        user_id = params.get("user", 1)
+        source = params.get("source", "keypad")
+        action = params.get("action", "unlock")
+
+        time.sleep(random.uniform(0.1, 0.3))  # noqa: S311
+
+        if action in ("unlock", "lock"):
+            state["state"] = "UNLOCK" if action == "unlock" else "LOCK"
+            state["lock_state"] = "unlocked" if action == "unlock" else "locked"
+
+        state["action"] = action
+        state["action_source_name"] = source
+        state["action_user"] = user_id
+        log.info(
+            "SIM %s %s via %s (user %s)", action.upper(), device_name, source, user_id
+        )
+        self.publish_state(device_name)
+
+        time.sleep(0.1)
+        state["action"] = ""
         self.publish_state(device_name)
 
     def _handle_lock_command(self, device_name: str, command: str) -> None:
