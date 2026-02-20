@@ -177,27 +177,15 @@ async def test_standalone_manual_lock_kept(buf: ActivityBuffer) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dedup_one_touch_lock_then_lock_remote(buf: ActivityBuffer) -> None:
-    """one_touch_lock followed by lock(remote) collapses into one automation event."""
+async def test_no_dedup_one_touch_lock(buf: ActivityBuffer) -> None:
+    """one_touch_lock is a deliberate physical action, not deduped with lock."""
     buf.append({"lock": "Front Door", "source": "manual"}, "one_touch_lock")
     buf.append({"lock": "Front Door", "source": "remote"}, "lock")
 
     recent = buf.recent(max_events=10)
-    assert len(recent) == 1
+    assert len(recent) == 2
     assert recent[0]["action"] == "lock"
-    assert recent[0]["source"] == "automation"
-
-
-@pytest.mark.asyncio
-async def test_dedup_lock_remote_then_one_touch_lock(buf: ActivityBuffer) -> None:
-    """lock(remote) followed by one_touch_lock collapses into one automation event."""
-    buf.append({"lock": "Front Door", "source": "remote"}, "lock")
-    buf.append({"lock": "Front Door", "source": "manual"}, "one_touch_lock")
-
-    recent = buf.recent(max_events=10)
-    assert len(recent) == 1
-    assert recent[0]["action"] == "lock"
-    assert recent[0]["source"] == "automation"
+    assert recent[1]["action"] == "one_touch_lock"
 
 
 @pytest.mark.asyncio
@@ -244,10 +232,10 @@ async def test_load_dedup_manual_lock_rf_pair(
 
 
 @pytest.mark.asyncio
-async def test_load_dedup_one_touch_lock_remote(
+async def test_load_no_dedup_one_touch_lock(
     hass: HomeAssistant, store: AsyncMock
 ) -> None:
-    """Persisted one_touch_lock + lock(remote) pair is collapsed on load."""
+    """Persisted one_touch_lock + lock(remote) are kept as separate events."""
     store.async_load.return_value = [
         {
             "lock": "Front Door",
@@ -266,9 +254,9 @@ async def test_load_dedup_one_touch_lock_remote(
     await buf.async_load()
 
     recent = buf.recent(max_events=10)
-    assert len(recent) == 1
+    assert len(recent) == 2
     assert recent[0]["action"] == "lock"
-    assert recent[0]["source"] == "automation"
+    assert recent[1]["action"] == "one_touch_lock"
 
 
 @pytest.mark.asyncio

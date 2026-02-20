@@ -17,7 +17,6 @@ DEDUP_WINDOW_SECONDS = 5
 
 _PHYSICAL_TO_BASE: dict[str, str] = {
     "manual_lock": "lock",
-    "one_touch_lock": "lock",
     "manual_unlock": "unlock",
 }
 
