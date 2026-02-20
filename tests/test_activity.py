@@ -189,6 +189,32 @@ async def test_no_dedup_one_touch_lock(buf: ActivityBuffer) -> None:
 
 
 @pytest.mark.asyncio
+async def test_dedup_same_action_lock_lock(buf: ActivityBuffer) -> None:
+    """Two lock commands within the window collapse to one."""
+    buf.append({"lock": "Front Door", "source": "automation"}, "lock")
+    buf.append({"lock": "Front Door", "source": "remote"}, "lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "remote"
+
+
+@pytest.mark.asyncio
+async def test_dedup_same_action_preserves_user(buf: ActivityBuffer) -> None:
+    """Same-action dedup preserves user info from the earlier event."""
+    buf.append(
+        {"lock": "Front Door", "source": "keypad", "user_name": "Alice"},
+        "unlock",
+    )
+    buf.append({"lock": "Front Door", "source": "manual"}, "unlock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["user_name"] == "Alice"
+
+
+@pytest.mark.asyncio
 async def test_dedup_manual_lock_remote_source(buf: ActivityBuffer) -> None:
     """manual_lock + lock(remote) treated the same as rf."""
     buf.append({"lock": "Front Door", "source": "manual"}, "manual_lock")
@@ -229,6 +255,32 @@ async def test_load_dedup_manual_lock_rf_pair(
     assert len(recent) == 1
     assert recent[0]["action"] == "lock"
     assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_load_dedup_same_action(hass: HomeAssistant, store: AsyncMock) -> None:
+    """Persisted duplicate lock commands are collapsed on load."""
+    store.async_load.return_value = [
+        {
+            "lock": "Front Door",
+            "action": "lock",
+            "source": "automation",
+            "timestamp": "2026-02-20T10:12:22+00:00",
+        },
+        {
+            "lock": "Front Door",
+            "action": "lock",
+            "source": "remote",
+            "timestamp": "2026-02-20T10:12:23+00:00",
+        },
+    ]
+    buf = ActivityBuffer(hass, store)
+    await buf.async_load()
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "remote"
 
 
 @pytest.mark.asyncio

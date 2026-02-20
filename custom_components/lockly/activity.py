@@ -42,9 +42,10 @@ def _within_stored_window(prev: dict[str, object], curr: dict[str, object]) -> b
 def _try_merge_stored(
     prev: dict[str, object], curr: dict[str, object]
 ) -> dict[str, object] | None:
-    """Merge two adjacent stored events if they form a physical+base pair.
+    """Merge two adjacent stored events if they are redundant.
 
-    Returns the merged event, or ``None`` if they cannot be merged.
+    Handles physical+base pairs (manual_lock + lock) and same-state
+    duplicates (lock + lock).  Returns the merged event or ``None``.
     """
     if not _within_stored_window(prev, curr):
         return None
@@ -74,6 +75,15 @@ def _try_merge_stored(
             merged["source"] = source
         return merged
 
+    # Case 3: exact same action repeated (e.g. two lock commands)
+    if prev_action == curr_action:
+        merged = {**curr}
+        if not merged.get("user_name") and prev.get("user_name"):
+            merged["user_name"] = prev["user_name"]
+        if merged.get("slot_id") is None and prev.get("slot_id") is not None:
+            merged["slot_id"] = prev["slot_id"]
+        return merged
+
     return None
 
 
@@ -88,7 +98,7 @@ class ActivityBuffer:
         self._save_unsub: CALLBACK_TYPE | None = None
 
     def append(self, event_data: dict[str, object], action: str) -> None:
-        """Append an event, deduplicating rapid manual+base lock pairs."""
+        """Append an event, deduplicating redundant rapid events."""
         if self._try_merge(event_data, action):
             return
         self._buffer.append(
@@ -123,13 +133,12 @@ class ActivityBuffer:
         return last
 
     def _try_merge(self, event_data: dict[str, object], action: str) -> bool:
-        """Merge physical+base lock pairs within a time window.
+        """Merge redundant lock events within a time window.
 
-        When a Zigbee command locks/unlocks the door, the lock firmware
-        reports both a physical action (manual_lock, one_touch_lock, …)
-        and the base action (rf/remote command confirmation) within
-        seconds.  Collapsing them avoids duplicate rows in the activity
-        card and lets us label the result as *automation*.
+        Handles physical+base pairs (the firmware reporting both
+        manual_lock and lock for one command) and same-state duplicates
+        (two lock commands within seconds, e.g. one-touch followed by
+        a lock-all automation).
         """
         last = self._dedup_candidate(event_data.get("lock"))
         if last is None:
@@ -166,6 +175,21 @@ class ActivityBuffer:
             self._schedule_save()
             return True
 
+        # Case 3: exact same action repeated (e.g. two lock commands)
+        if last_action == action:
+            merged = {
+                **event_data,
+                "action": action,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+            if not merged.get("user_name") and last.get("user_name"):
+                merged["user_name"] = last["user_name"]
+            if merged.get("slot_id") is None and last.get("slot_id") is not None:
+                merged["slot_id"] = last["slot_id"]
+            self._buffer[-1] = merged
+            self._schedule_save()
+            return True
+
         return False
 
     def recent(self, max_events: int = 20) -> list[dict[str, object]]:
@@ -178,7 +202,7 @@ class ActivityBuffer:
     def _dedup_events(
         events: list[dict[str, object]],
     ) -> list[dict[str, object]]:
-        """Deduplicate physical+base lock pairs using stored timestamps."""
+        """Deduplicate redundant events using stored timestamps."""
         if not events:
             return events
         result: list[dict[str, object]] = [events[0]]
