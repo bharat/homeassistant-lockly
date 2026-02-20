@@ -15,11 +15,13 @@ if TYPE_CHECKING:
 MAX_EVENTS = 100
 DEDUP_WINDOW_SECONDS = 5
 
-_MANUAL_TO_BASE: dict[str, str] = {
+_PHYSICAL_TO_BASE: dict[str, str] = {
     "manual_lock": "lock",
+    "one_touch_lock": "lock",
     "manual_unlock": "unlock",
 }
-_BASE_TO_MANUAL: dict[str, str] = {v: k for k, v in _MANUAL_TO_BASE.items()}
+
+_AUTOMATION_SOURCES: set[str] = {"rf", "remote"}
 
 
 def _within_stored_window(prev: dict[str, object], curr: dict[str, object]) -> bool:
@@ -41,7 +43,7 @@ def _within_stored_window(prev: dict[str, object], curr: dict[str, object]) -> b
 def _try_merge_stored(
     prev: dict[str, object], curr: dict[str, object]
 ) -> dict[str, object] | None:
-    """Merge two adjacent stored events if they form a manual+base pair.
+    """Merge two adjacent stored events if they form a physical+base pair.
 
     Returns the merged event, or ``None`` if they cannot be merged.
     """
@@ -51,11 +53,11 @@ def _try_merge_stored(
     prev_action = prev.get("action")
     curr_action = curr.get("action")
 
-    # Case 1: curr is manual_lock/unlock, prev is the base lock/unlock
-    base_of_curr = _MANUAL_TO_BASE.get(curr_action)
+    # Case 1: curr is physical variant, prev is the base action
+    base_of_curr = _PHYSICAL_TO_BASE.get(curr_action)
     if base_of_curr and prev_action == base_of_curr:
         merged = {**prev}
-        if merged.get("source") == "rf":
+        if merged.get("source") in _AUTOMATION_SOURCES:
             merged["source"] = "automation"
         if not merged.get("user_name") and curr.get("user_name"):
             merged["user_name"] = curr["user_name"]
@@ -63,11 +65,10 @@ def _try_merge_stored(
             merged["slot_id"] = curr["slot_id"]
         return merged
 
-    # Case 2: curr is base lock/unlock, prev is manual_lock/unlock
-    manual_of_curr = _BASE_TO_MANUAL.get(curr_action)
-    if manual_of_curr and prev_action == manual_of_curr:
+    # Case 2: curr is base action, prev is a physical variant
+    if _PHYSICAL_TO_BASE.get(prev_action) == curr_action:
         source = curr.get("source")
-        if source == "rf":
+        if source in _AUTOMATION_SOURCES:
             source = "automation"
         merged = {**prev, **curr}
         if source:
@@ -123,13 +124,13 @@ class ActivityBuffer:
         return last
 
     def _try_merge(self, event_data: dict[str, object], action: str) -> bool:
-        """Merge manual_lock+lock (or unlock) pairs within a time window.
+        """Merge physical+base lock pairs within a time window.
 
         When a Zigbee command locks/unlocks the door, the lock firmware
-        reports both a manual_* action (physical mechanism) and the base
-        action (rf command confirmation) within seconds.  Collapsing them
-        avoids duplicate rows in the activity card and lets us label the
-        result as *automation* when the source is ``rf``.
+        reports both a physical action (manual_lock, one_touch_lock, …)
+        and the base action (rf/remote command confirmation) within
+        seconds.  Collapsing them avoids duplicate rows in the activity
+        card and lets us label the result as *automation*.
         """
         last = self._dedup_candidate(event_data.get("lock"))
         if last is None:
@@ -137,10 +138,10 @@ class ActivityBuffer:
 
         last_action = last.get("action")
 
-        # Case 1: new event is manual_lock/unlock, previous is base lock/unlock
-        base_of_new = _MANUAL_TO_BASE.get(action)
+        # Case 1: new event is a physical variant, previous is base
+        base_of_new = _PHYSICAL_TO_BASE.get(action)
         if base_of_new and last_action == base_of_new:
-            if last.get("source") == "rf":
+            if last.get("source") in _AUTOMATION_SOURCES:
                 last["source"] = "automation"
             if not last.get("user_name") and event_data.get("user_name"):
                 last["user_name"] = event_data["user_name"]
@@ -149,11 +150,10 @@ class ActivityBuffer:
             self._schedule_save()
             return True
 
-        # Case 2: new event is base lock/unlock, previous is manual_lock/unlock
-        manual_of_new = _BASE_TO_MANUAL.get(action)
-        if manual_of_new and last_action == manual_of_new:
+        # Case 2: new event is base action, previous is physical variant
+        if _PHYSICAL_TO_BASE.get(last_action) == action:
             source = event_data.get("source")
-            if source == "rf":
+            if source in _AUTOMATION_SOURCES:
                 source = "automation"
             merged = {
                 **last,
@@ -179,7 +179,7 @@ class ActivityBuffer:
     def _dedup_events(
         events: list[dict[str, object]],
     ) -> list[dict[str, object]]:
-        """Deduplicate manual+base lock pairs using stored timestamps."""
+        """Deduplicate physical+base lock pairs using stored timestamps."""
         if not events:
             return events
         result: list[dict[str, object]] = [events[0]]

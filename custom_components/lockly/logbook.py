@@ -18,7 +18,8 @@ SOURCE_LABELS: dict[str, str] = {
     "keypad": "keypad",
     "rfid": "RFID",
     "manual": "manual",
-    "rf": "remote",
+    "rf": "automation",
+    "remote": "automation",
     "automation": "automation",
 }
 

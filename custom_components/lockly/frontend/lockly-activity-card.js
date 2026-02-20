@@ -59,7 +59,8 @@ const SOURCE_LABELS = {
   keypad: "Keypad",
   rfid: "RFID",
   manual: "Manual",
-  rf: "Remote",
+  rf: "Automation",
+  remote: "Automation",
   automation: "Automation",
 };
 

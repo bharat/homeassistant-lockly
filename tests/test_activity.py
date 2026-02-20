@@ -176,6 +176,42 @@ async def test_standalone_manual_lock_kept(buf: ActivityBuffer) -> None:
     assert recent[0]["source"] == "manual"
 
 
+@pytest.mark.asyncio
+async def test_dedup_one_touch_lock_then_lock_remote(buf: ActivityBuffer) -> None:
+    """one_touch_lock followed by lock(remote) collapses into one automation event."""
+    buf.append({"lock": "Front Door", "source": "manual"}, "one_touch_lock")
+    buf.append({"lock": "Front Door", "source": "remote"}, "lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_dedup_lock_remote_then_one_touch_lock(buf: ActivityBuffer) -> None:
+    """lock(remote) followed by one_touch_lock collapses into one automation event."""
+    buf.append({"lock": "Front Door", "source": "remote"}, "lock")
+    buf.append({"lock": "Front Door", "source": "manual"}, "one_touch_lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_dedup_manual_lock_remote_source(buf: ActivityBuffer) -> None:
+    """manual_lock + lock(remote) treated the same as rf."""
+    buf.append({"lock": "Front Door", "source": "manual"}, "manual_lock")
+    buf.append({"lock": "Front Door", "source": "remote"}, "lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "automation"
+
+
 # --- Load-time deduplication tests ---
 
 
@@ -195,6 +231,34 @@ async def test_load_dedup_manual_lock_rf_pair(
             "lock": "Front Door",
             "action": "lock",
             "source": "rf",
+            "timestamp": "2026-02-20T10:12:23+00:00",
+        },
+    ]
+    buf = ActivityBuffer(hass, store)
+    await buf.async_load()
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_load_dedup_one_touch_lock_remote(
+    hass: HomeAssistant, store: AsyncMock
+) -> None:
+    """Persisted one_touch_lock + lock(remote) pair is collapsed on load."""
+    store.async_load.return_value = [
+        {
+            "lock": "Front Door",
+            "action": "one_touch_lock",
+            "source": "manual",
+            "timestamp": "2026-02-20T10:12:22+00:00",
+        },
+        {
+            "lock": "Front Door",
+            "action": "lock",
+            "source": "remote",
             "timestamp": "2026-02-20T10:12:23+00:00",
         },
     ]
