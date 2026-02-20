@@ -397,9 +397,9 @@ class LocklyActivityCard extends HTMLElement {
     }
 
     const metaParts = [];
-    if (who) metaParts.push(escapeHtml(who));
     if (source)
       metaParts.push(`<span class="la-source">${escapeHtml(source)}</span>`);
+    if (who) metaParts.push(escapeHtml(who));
 
     const isAnonymousUnlock =
       !who &&
