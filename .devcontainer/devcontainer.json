@@ -19,9 +19,9 @@
         "ms-python.python",
         "ms-python.vscode-pylance",
         "ryanluker.vscode-coverage-gutters",
-        "SanjulaGanepola.github-local-actions",
         "openai.chatgpt",
-        "github.vscode-github-actions"
+        "github.vscode-github-actions",
+        "SanjulaGanepola.github-local-actions"
       ],
       "settings": {
         "files.eol": "\n",
@@ -39,17 +39,17 @@
       }
     }
   },
-  "remoteUser": "vscode",
   "remoteEnv": {
     "GIT_EDITOR": "cursor --wait"
   },
+  "remoteUser": "vscode",
   "features": {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
       "moby": false
     },
     "ghcr.io/devcontainers/features/node:1": {},
     "ghcr.io/devcontainers-extra/features/apt-packages:1": {
-      "packages": "ffmpeg,libturbojpeg0,libpcap-dev,mosquitto,mosquitto-clients"
+      "packages": "gh,ffmpeg,libpcap-dev,libturbojpeg0,mosquitto,mosquitto-clients"
     }
   },
   "mounts": [
