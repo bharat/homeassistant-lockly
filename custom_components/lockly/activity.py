@@ -22,6 +22,61 @@ _MANUAL_TO_BASE: dict[str, str] = {
 _BASE_TO_MANUAL: dict[str, str] = {v: k for k, v in _MANUAL_TO_BASE.items()}
 
 
+def _within_stored_window(prev: dict[str, object], curr: dict[str, object]) -> bool:
+    """Check whether two stored events are for the same lock within the dedup window."""
+    if prev.get("lock") != curr.get("lock"):
+        return False
+    prev_ts = prev.get("timestamp")
+    curr_ts = curr.get("timestamp")
+    if not isinstance(prev_ts, str) or not isinstance(curr_ts, str):
+        return False
+    try:
+        prev_time = datetime.fromisoformat(prev_ts)
+        curr_time = datetime.fromisoformat(curr_ts)
+    except (ValueError, TypeError):
+        return False
+    return abs((curr_time - prev_time).total_seconds()) <= DEDUP_WINDOW_SECONDS
+
+
+def _try_merge_stored(
+    prev: dict[str, object], curr: dict[str, object]
+) -> dict[str, object] | None:
+    """Merge two adjacent stored events if they form a manual+base pair.
+
+    Returns the merged event, or ``None`` if they cannot be merged.
+    """
+    if not _within_stored_window(prev, curr):
+        return None
+
+    prev_action = prev.get("action")
+    curr_action = curr.get("action")
+
+    # Case 1: curr is manual_lock/unlock, prev is the base lock/unlock
+    base_of_curr = _MANUAL_TO_BASE.get(curr_action)
+    if base_of_curr and prev_action == base_of_curr:
+        merged = {**prev}
+        if merged.get("source") == "rf":
+            merged["source"] = "automation"
+        if not merged.get("user_name") and curr.get("user_name"):
+            merged["user_name"] = curr["user_name"]
+        if merged.get("slot_id") is None and curr.get("slot_id") is not None:
+            merged["slot_id"] = curr["slot_id"]
+        return merged
+
+    # Case 2: curr is base lock/unlock, prev is manual_lock/unlock
+    manual_of_curr = _BASE_TO_MANUAL.get(curr_action)
+    if manual_of_curr and prev_action == manual_of_curr:
+        source = curr.get("source")
+        if source == "rf":
+            source = "automation"
+        merged = {**prev, **curr}
+        if source:
+            merged["source"] = source
+        return merged
+
+    return None
+
+
 class ActivityBuffer:
     """Persisted ring buffer of lock activity events."""
 
@@ -120,13 +175,32 @@ class ActivityBuffer:
         events.reverse()
         return events[:max_events]
 
+    @staticmethod
+    def _dedup_events(
+        events: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        """Deduplicate manual+base lock pairs using stored timestamps."""
+        if not events:
+            return events
+        result: list[dict[str, object]] = [events[0]]
+        for evt in events[1:]:
+            merged = _try_merge_stored(result[-1], evt)
+            if merged is not None:
+                result[-1] = merged
+            else:
+                result.append(evt)
+        return result
+
     async def async_load(self) -> None:
-        """Load persisted events into the in-memory buffer."""
+        """Load persisted events, deduplicating stale pairs on the fly."""
         if self._store is None:
             return
         data = await self._store.async_load()
         if data and isinstance(data, list):
-            self._buffer.extend(data)
+            clean = self._dedup_events(data)
+            self._buffer.extend(clean)
+            if len(clean) < len(data):
+                self._schedule_save()
 
     async def _async_save(self, *_: object) -> None:
         """Persist the current buffer to disk."""

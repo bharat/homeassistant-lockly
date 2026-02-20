@@ -174,3 +174,104 @@ async def test_standalone_manual_lock_kept(buf: ActivityBuffer) -> None:
     assert len(recent) == 1
     assert recent[0]["action"] == "manual_lock"
     assert recent[0]["source"] == "manual"
+
+
+# --- Load-time deduplication tests ---
+
+
+@pytest.mark.asyncio
+async def test_load_dedup_manual_lock_rf_pair(
+    hass: HomeAssistant, store: AsyncMock
+) -> None:
+    """Persisted manual_lock + lock(rf) pair is collapsed on load."""
+    store.async_load.return_value = [
+        {
+            "lock": "Front Door",
+            "action": "manual_lock",
+            "source": "manual",
+            "timestamp": "2026-02-20T10:12:22+00:00",
+        },
+        {
+            "lock": "Front Door",
+            "action": "lock",
+            "source": "rf",
+            "timestamp": "2026-02-20T10:12:23+00:00",
+        },
+    ]
+    buf = ActivityBuffer(hass, store)
+    await buf.async_load()
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_load_dedup_idempotent(hass: HomeAssistant, store: AsyncMock) -> None:
+    """Already-clean data passes through unchanged."""
+    events = [
+        {
+            "lock": "Front Door",
+            "action": "unlock",
+            "source": "keypad",
+            "user_name": "Alice",
+            "timestamp": "2026-02-20T10:11:46+00:00",
+        },
+        {
+            "lock": "Front Door",
+            "action": "lock",
+            "source": "automation",
+            "timestamp": "2026-02-20T10:12:23+00:00",
+        },
+    ]
+    store.async_load.return_value = list(events)
+    buf = ActivityBuffer(hass, store)
+    await buf.async_load()
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 2
+    assert recent[0]["action"] == "lock"
+    assert recent[1]["action"] == "unlock"
+
+
+@pytest.mark.asyncio
+async def test_load_dedup_schedules_save(hass: HomeAssistant, store: AsyncMock) -> None:
+    """A save is scheduled when dedup actually removes events."""
+    store.async_load.return_value = [
+        {
+            "lock": "Front Door",
+            "action": "manual_lock",
+            "source": "manual",
+            "timestamp": "2026-02-20T10:12:22+00:00",
+        },
+        {
+            "lock": "Front Door",
+            "action": "lock",
+            "source": "rf",
+            "timestamp": "2026-02-20T10:12:23+00:00",
+        },
+    ]
+    buf = ActivityBuffer(hass, store)
+    with patch("custom_components.lockly.activity.async_call_later") as mock_later:
+        await buf.async_load()
+        assert mock_later.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_load_dedup_no_save_when_clean(
+    hass: HomeAssistant, store: AsyncMock
+) -> None:
+    """No save is scheduled when data is already clean."""
+    store.async_load.return_value = [
+        {
+            "lock": "Front Door",
+            "action": "unlock",
+            "source": "keypad",
+            "timestamp": "2026-02-20T10:11:46+00:00",
+        },
+    ]
+    buf = ActivityBuffer(hass, store)
+    with patch("custom_components.lockly.activity.async_call_later") as mock_later:
+        await buf.async_load()
+        assert mock_later.call_count == 0
