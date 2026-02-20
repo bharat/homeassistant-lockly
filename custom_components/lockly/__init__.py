@@ -31,6 +31,7 @@ from .const import (
     SERVICE_APPLY_ALL,
     SERVICE_APPLY_SLOT,
     SERVICE_EXPORT_SLOTS,
+    SERVICE_GET_SLOT,
     SERVICE_IMPORT_SLOTS,
     SERVICE_PUSH_SLOT,
     SERVICE_REMOVE_SLOT,
@@ -261,6 +262,16 @@ async def _handle_update_slot(hass: HomeAssistant, call: ServiceCall) -> None:
     )
 
 
+async def _handle_get_slot(hass: HomeAssistant, call: ServiceCall) -> dict:
+    manager = await _get_manager(hass, call)
+    slot_id = call.data["slot"]
+    slot = manager.coordinator.data.get(slot_id)
+    if slot is None:
+        message = "slot_not_found"
+        raise ServiceValidationError(message)
+    return {"name": slot.name, "status": slot.status}
+
+
 async def _handle_export_slots(hass: HomeAssistant, call: ServiceCall) -> dict:
     manager = await _get_manager(hass, call)
     include_pins = call.data.get("include_pins", False)
@@ -323,6 +334,13 @@ def _register_services(hass: HomeAssistant) -> None:
         SERVICE_UPDATE_SLOT,
         partial(_handle_update_slot, hass),
         schema=SERVICE_SCHEMA_UPDATE,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_SLOT,
+        partial(_handle_get_slot, hass),
+        schema=SERVICE_SCHEMA_SLOT,
+        supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,

@@ -287,6 +287,43 @@ async def test_slot_status_attribute(
 
 
 @pytest.mark.enable_socket
+async def test_get_slot_returns_name_and_status(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test get_slot returns name and status for a slot."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="Guest", pin="1234", enabled=True)
+    await manager.update_slot(1, status="queued")
+
+    response = await hass.services.async_call(
+        DOMAIN,
+        "get_slot",
+        {"entry_id": entry.entry_id, "slot": 1},
+        blocking=True,
+        return_response=True,
+    )
+    assert response == {"name": "Guest", "status": "queued"}
+
+
+@pytest.mark.enable_socket
+async def test_get_slot_missing_raises(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Test get_slot raises for a non-existent slot."""
+    entry = await _setup_entry(hass, enable_custom_integrations)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "get_slot",
+            {"entry_id": entry.entry_id, "slot": 99},
+            blocking=True,
+            return_response=True,
+        )
+
+
+@pytest.mark.enable_socket
 async def test_export_slots_returns_payload(
     hass: HomeAssistant, enable_custom_integrations: Any
 ) -> None:

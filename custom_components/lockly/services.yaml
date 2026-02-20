@@ -128,6 +128,22 @@ update_slot:
       selector:
         boolean:
 
+get_slot:
+  name: Get Slot
+  description: Return the name and status of a slot as JSON.
+  fields:
+    entry_id:
+      required: true
+      selector:
+        text:
+    slot:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: box
+
 export_slots:
   name: Export Slots
   description: Export slot data as JSON for a config entry.
