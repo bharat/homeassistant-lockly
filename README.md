@@ -111,8 +111,10 @@ and safe.
     <td width="40%">
       <strong>See who unlocked your doors</strong><br />
       The Lock Activity card shows recent lock events across all your managed
-      locks — who unlocked, how, and when. Toggle between a chronological feed
-      and a per-lock summary. Click any entry to jump to that lock's history.
+      locks — who unlocked, how, and when. Redundant events (firmware echoes,
+      duplicate automation commands) are automatically collapsed. Toggle between
+      a chronological feed and a per-lock summary that highlights the last
+      identified user. Click any entry to jump to that lock's history.
     </td>
     <td width="60%">
       <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-activity-card.png">
@@ -140,8 +142,11 @@ and safe.
 - Simulate changes without sending MQTT commands.
 - Choose a Lockly instance per card and preview the card live while configuring.
 - Pick locks and lock groups directly from the visual editor.
-- Track lock activity — see who unlocked each door, when, and how (keypad, RFID, manual, remote).
+- Track lock activity — see who unlocked each door, when, and how (keypad, RFID, manual, automation).
+- Smart deduplication collapses firmware echoes and redundant automation locks while preserving the raw event log.
+- Per-lock view shows the last identified user who unlocked each door, so you always know who came in.
 - Activity data persists across restarts and integrates with HA's built-in logbook.
+- Reconstruct activity history from Zigbee2MQTT logs with the included replay tool.
 
 ## Installation (HACS)
 
@@ -201,8 +206,17 @@ and copy the entry ID shown in the options dialog.
 
 The Lock Activity card shows recent lock events — who unlocked, the method, and
 when. It supports two views: **Recent** (chronological) and **Per Lock** (latest
-event per lock). Activity survives HA restarts and also appears as rich entries
-in the built-in logbook.
+event per lock with the last identified unlocker). Activity survives HA restarts
+and also appears as rich entries in the built-in logbook.
+
+Events are stored raw and deduplicated at display time, so no data is lost:
+
+- **Firmware echoes** — `manual_lock` + `lock(rf)` pairs from a single Zigbee
+  command are collapsed into one "Locked (AUTOMATION)" entry (5 s window).
+- **Same-action repeats** — duplicate `lock` commands from overlapping
+  automations are collapsed, keeping the first (5 s window).
+- **Deliberate physical + redundant automation** — a `one_touch_lock` followed
+  by a redundant automation `lock` keeps the physical action (60 s window).
 
 ```yaml
 type: custom:lockly-activity-card
@@ -242,6 +256,27 @@ Enable "Simulation mode (no MQTT)" to test the UI without touching locks.
 - `lockly.import_slots`
 
 See `custom_components/lockly/services.yaml` for fields and descriptions.
+
+## Rebuilding Activity from Z2M Logs
+
+If you want to reconstruct your activity history from Zigbee2MQTT log files
+(e.g. after a fresh install, or to iterate on dedup rules without losing data),
+use the included replay script:
+
+```bash
+# Preview parsed events
+python scripts/replay_z2m_log.py /path/to/z2m/log.log --tz-offset -8
+
+# Write directly to the HA store, resolving slot names automatically
+python scripts/replay_z2m_log.py /path/to/z2m/log.log \
+    --tz-offset -8 \
+    --slots-store /config/.storage/lockly_slots.YOUR_ENTRY_ID \
+    --store-path /config/.storage/lockly_activity.YOUR_ENTRY_ID
+```
+
+Stop HA before writing and restart it afterward so the integration picks up the
+new data. The `--slots-store` flag reads slot-to-name mappings from the existing
+Lockly slots file; use `--slots '{"7": "Name"}'` for manual overrides.
 
 ## Export & Import
 
