@@ -14,17 +14,26 @@ if TYPE_CHECKING:
 
 MAX_EVENTS = 100
 DEDUP_WINDOW_SECONDS = 5
+DEDUP_WINDOW_PHYSICAL = 60
 
 _PHYSICAL_TO_BASE: dict[str, str] = {
     "manual_lock": "lock",
     "manual_unlock": "unlock",
 }
 
+_DELIBERATE_TO_BASE: dict[str, str] = {
+    "one_touch_lock": "lock",
+}
+
 _AUTOMATION_SOURCES: set[str] = {"rf", "remote"}
 
 
-def _within_window(prev: dict[str, object], curr: dict[str, object]) -> bool:
-    """Check whether two events are for the same lock within the dedup window."""
+def _within_window(
+    prev: dict[str, object],
+    curr: dict[str, object],
+    window: float = DEDUP_WINDOW_SECONDS,
+) -> bool:
+    """Check whether two events are for the same lock within *window* seconds."""
     if prev.get("lock") != curr.get("lock"):
         return False
     prev_ts = prev.get("timestamp")
@@ -36,7 +45,19 @@ def _within_window(prev: dict[str, object], curr: dict[str, object]) -> bool:
         curr_time = datetime.fromisoformat(curr_ts)
     except (ValueError, TypeError):
         return False
-    return abs((curr_time - prev_time).total_seconds()) <= DEDUP_WINDOW_SECONDS
+    return abs((curr_time - prev_time).total_seconds()) <= window
+
+
+def _merge_keep_first(
+    prev: dict[str, object], curr: dict[str, object]
+) -> dict[str, object]:
+    """Merge two events, keeping prev as canonical and pulling user info."""
+    merged = {**prev}
+    if not merged.get("user_name") and curr.get("user_name"):
+        merged["user_name"] = curr["user_name"]
+    if merged.get("slot_id") is None and curr.get("slot_id") is not None:
+        merged["slot_id"] = curr["slot_id"]
+    return merged
 
 
 def _try_merge(
@@ -44,45 +65,41 @@ def _try_merge(
 ) -> dict[str, object] | None:
     """Merge two adjacent events if they are redundant.
 
-    Handles physical+base pairs (manual_lock + lock) and same-action
-    duplicates (lock + lock).  Returns the merged event or ``None``.
+    Cases 1-3 handle firmware echoes and exact repeats within a narrow
+    window.  Case 4 handles deliberate physical actions (one_touch_lock)
+    followed by a redundant automation lock within a wider window.
     """
-    if not _within_window(prev, curr):
-        return None
-
     prev_action = prev.get("action")
     curr_action = curr.get("action")
 
-    # Case 1: curr is physical variant, prev is the base action
-    base_of_curr = _PHYSICAL_TO_BASE.get(curr_action)
-    if base_of_curr and prev_action == base_of_curr:
-        merged = {**prev}
-        if merged.get("source") in _AUTOMATION_SOURCES:
-            merged["source"] = "automation"
-        if not merged.get("user_name") and curr.get("user_name"):
-            merged["user_name"] = curr["user_name"]
-        if merged.get("slot_id") is None and curr.get("slot_id") is not None:
-            merged["slot_id"] = curr["slot_id"]
-        return merged
+    if _within_window(prev, curr):
+        # Case 1: curr is firmware echo, prev is the base action
+        base_of_curr = _PHYSICAL_TO_BASE.get(curr_action)
+        if base_of_curr and prev_action == base_of_curr:
+            merged = _merge_keep_first(prev, curr)
+            if merged.get("source") in _AUTOMATION_SOURCES:
+                merged["source"] = "automation"
+            return merged
 
-    # Case 2: curr is base action, prev is a physical variant
-    if _PHYSICAL_TO_BASE.get(prev_action) == curr_action:
-        source = curr.get("source")
-        if source in _AUTOMATION_SOURCES:
-            source = "automation"
-        merged = {**prev, **curr}
-        if source:
-            merged["source"] = source
-        return merged
+        # Case 2: curr is base action, prev is firmware echo
+        if _PHYSICAL_TO_BASE.get(prev_action) == curr_action:
+            source = curr.get("source")
+            if source in _AUTOMATION_SOURCES:
+                source = "automation"
+            merged = {**prev, **curr}
+            if source:
+                merged["source"] = source
+            return merged
 
-    # Case 3: exact same action repeated — keep the first (canonical)
-    if prev_action == curr_action:
-        merged = {**prev}
-        if not merged.get("user_name") and curr.get("user_name"):
-            merged["user_name"] = curr["user_name"]
-        if merged.get("slot_id") is None and curr.get("slot_id") is not None:
-            merged["slot_id"] = curr["slot_id"]
-        return merged
+        # Case 3: exact same action repeated — keep the first
+        if prev_action == curr_action:
+            return _merge_keep_first(prev, curr)
+
+    # Case 4: deliberate physical action + redundant base (wider window)
+    if _DELIBERATE_TO_BASE.get(prev_action) == curr_action and _within_window(
+        prev, curr, DEDUP_WINDOW_PHYSICAL
+    ):
+        return _merge_keep_first(prev, curr)
 
     return None
 

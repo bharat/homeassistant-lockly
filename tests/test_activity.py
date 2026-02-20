@@ -229,15 +229,15 @@ async def test_standalone_manual_lock_kept(buf: ActivityBuffer) -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_dedup_one_touch_lock(buf: ActivityBuffer) -> None:
-    """one_touch_lock is a deliberate physical action, not deduped with lock."""
+async def test_dedup_one_touch_lock_then_automation(buf: ActivityBuffer) -> None:
+    """one_touch_lock + lock(automation) within 60s keeps one_touch_lock."""
     buf.append({"lock": "Front Door", "source": "manual"}, "one_touch_lock")
     buf.append({"lock": "Front Door", "source": "remote"}, "lock")
 
     recent = buf.recent(max_events=10)
-    assert len(recent) == 2
-    assert recent[0]["action"] == "lock"
-    assert recent[1]["action"] == "one_touch_lock"
+    assert len(recent) == 1
+    assert recent[0]["action"] == "one_touch_lock"
+    assert recent[0]["source"] == "manual"
 
 
 @pytest.mark.asyncio
@@ -338,10 +338,10 @@ async def test_loaded_same_action_deduped(
 
 
 @pytest.mark.asyncio
-async def test_loaded_one_touch_lock_not_deduped(
+async def test_loaded_one_touch_lock_deduped(
     hass: HomeAssistant, store: AsyncMock
 ) -> None:
-    """Persisted one_touch_lock + lock(remote) are kept separate."""
+    """Persisted one_touch_lock + lock(remote) within 60s collapses."""
     store.async_load.return_value = [
         {
             "lock": "Front Door",
@@ -353,7 +353,35 @@ async def test_loaded_one_touch_lock_not_deduped(
             "lock": "Front Door",
             "action": "lock",
             "source": "remote",
-            "timestamp": "2026-02-20T10:12:23+00:00",
+            "timestamp": "2026-02-20T10:12:42+00:00",
+        },
+    ]
+    buf = ActivityBuffer(hass, store)
+    await buf.async_load()
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "one_touch_lock"
+    assert recent[0]["source"] == "manual"
+
+
+@pytest.mark.asyncio
+async def test_one_touch_lock_not_deduped_outside_window(
+    hass: HomeAssistant, store: AsyncMock
+) -> None:
+    """one_touch_lock + lock more than 60s apart are not collapsed."""
+    store.async_load.return_value = [
+        {
+            "lock": "Front Door",
+            "action": "one_touch_lock",
+            "source": "manual",
+            "timestamp": "2026-02-20T10:12:00+00:00",
+        },
+        {
+            "lock": "Front Door",
+            "action": "lock",
+            "source": "remote",
+            "timestamp": "2026-02-20T10:13:05+00:00",
         },
     ]
     buf = ActivityBuffer(hass, store)
@@ -361,8 +389,6 @@ async def test_loaded_one_touch_lock_not_deduped(
 
     recent = buf.recent(max_events=10)
     assert len(recent) == 2
-    assert recent[0]["action"] == "lock"
-    assert recent[1]["action"] == "one_touch_lock"
 
 
 @pytest.mark.asyncio
