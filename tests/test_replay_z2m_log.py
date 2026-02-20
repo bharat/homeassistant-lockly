@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from scripts.replay_z2m_log import (
     _correlate_events,
+    load_slots_store,
     parse_log,
     write_store,
 )
@@ -239,6 +240,37 @@ def test_write_store_preserves_envelope(tmp_path: Path) -> None:
     data = json.loads(path.read_text())
     assert data["key"] == "lockly_activity.abc123"
     assert data["data"] == events
+
+
+# -- load_slots_store -------------------------------------------------
+
+
+def test_load_slots_store(tmp_path: Path) -> None:
+    store = {
+        "version": 1,
+        "minor_version": 1,
+        "key": "lockly_slots.abc123",
+        "data": [
+            {"slot": 2, "name": "Alice", "pin": "1234", "enabled": True},
+            {"slot": 7, "name": "Lorena", "pin": "5678", "enabled": True},
+            {"slot": 9, "name": "", "pin": "", "enabled": False},
+        ],
+    }
+    path = tmp_path / "slots.json"
+    path.write_text(json.dumps(store))
+    slots = load_slots_store(str(path))
+    assert slots == {2: "Alice", 7: "Lorena"}
+    assert 9 not in slots
+
+
+def test_load_slots_store_raw_list(tmp_path: Path) -> None:
+    data = [
+        {"slot": 1, "name": "Bob", "pin": "0000", "enabled": True},
+    ]
+    path = tmp_path / "slots.json"
+    path.write_text(json.dumps(data))
+    slots = load_slots_store(str(path))
+    assert slots == {1: "Bob"}
 
 
 # -- full pipeline ----------------------------------------------------

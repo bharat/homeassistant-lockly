@@ -13,10 +13,14 @@ Usage examples::
     python scripts/replay_z2m_log.py z2m.log \
         --store-path /config/.storage/lockly_activity.abc123
 
-    # Provide slot-name mapping and timezone offset
+    # Auto-resolve slot names from the Lockly slots store
     python scripts/replay_z2m_log.py z2m.log \
-        --slots '{"7": "Lorena", "2": "Alice"}' \
+        --slots-store .storage/lockly_slots.abc123 \
         --tz-offset -1
+
+    # Or provide slot-name mapping manually
+    python scripts/replay_z2m_log.py z2m.log \
+        --slots '{"7": "Lorena", "2": "Alice"}'
 
 Log format (z2m default)::
 
@@ -226,6 +230,22 @@ def parse_log(
     return _correlate_events(raw)
 
 
+def load_slots_store(path: str) -> dict[int, str]:
+    """Read a lockly_slots HA .storage file and return {slot_id: name}."""
+    store_path = Path(path)
+    with store_path.open(encoding="utf-8") as fh:
+        raw = json.load(fh)
+
+    items = raw.get("data", raw) if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        return {}
+    return {
+        int(item["slot"]): item["name"]
+        for item in items
+        if isinstance(item, dict) and item.get("name") and "slot" in item
+    }
+
+
 def write_store(path: str, events: list[dict[str, object]]) -> None:
     """Write events to a HA .storage file, preserving envelope."""
     store_path = Path(path)
@@ -268,6 +288,10 @@ def main() -> None:
         help="z2m base MQTT topic (default: zigbee2mqtt)",
     )
     parser.add_argument(
+        "--slots-store",
+        help="Path to lockly_slots HA .storage file for name resolution",
+    )
+    parser.add_argument(
         "--slots",
         help=('JSON mapping of slot IDs to names, e.g. \'{"7": "Lorena"}\''),
     )
@@ -281,9 +305,11 @@ def main() -> None:
     args = parser.parse_args()
 
     slots: dict[int, str] = {}
+    if args.slots_store:
+        slots = load_slots_store(args.slots_store)
     if args.slots:
         raw_slots = json.loads(args.slots)
-        slots = {int(k): v for k, v in raw_slots.items()}
+        slots.update({int(k): v for k, v in raw_slots.items()})
 
     with Path(args.logfile).open(encoding="utf-8") as fh:
         lines = fh.readlines()
