@@ -23,8 +23,8 @@ _PHYSICAL_TO_BASE: dict[str, str] = {
 _AUTOMATION_SOURCES: set[str] = {"rf", "remote"}
 
 
-def _within_stored_window(prev: dict[str, object], curr: dict[str, object]) -> bool:
-    """Check whether two stored events are for the same lock within the dedup window."""
+def _within_window(prev: dict[str, object], curr: dict[str, object]) -> bool:
+    """Check whether two events are for the same lock within the dedup window."""
     if prev.get("lock") != curr.get("lock"):
         return False
     prev_ts = prev.get("timestamp")
@@ -39,15 +39,15 @@ def _within_stored_window(prev: dict[str, object], curr: dict[str, object]) -> b
     return abs((curr_time - prev_time).total_seconds()) <= DEDUP_WINDOW_SECONDS
 
 
-def _try_merge_stored(
+def _try_merge(
     prev: dict[str, object], curr: dict[str, object]
 ) -> dict[str, object] | None:
-    """Merge two adjacent stored events if they are redundant.
+    """Merge two adjacent events if they are redundant.
 
-    Handles physical+base pairs (manual_lock + lock) and same-state
+    Handles physical+base pairs (manual_lock + lock) and same-action
     duplicates (lock + lock).  Returns the merged event or ``None``.
     """
-    if not _within_stored_window(prev, curr):
+    if not _within_window(prev, curr):
         return None
 
     prev_action = prev.get("action")
@@ -75,20 +75,44 @@ def _try_merge_stored(
             merged["source"] = source
         return merged
 
-    # Case 3: exact same action repeated (e.g. two lock commands)
+    # Case 3: exact same action repeated — keep the first (canonical)
     if prev_action == curr_action:
-        merged = {**curr}
-        if not merged.get("user_name") and prev.get("user_name"):
-            merged["user_name"] = prev["user_name"]
-        if merged.get("slot_id") is None and prev.get("slot_id") is not None:
-            merged["slot_id"] = prev["slot_id"]
+        merged = {**prev}
+        if not merged.get("user_name") and curr.get("user_name"):
+            merged["user_name"] = curr["user_name"]
+        if merged.get("slot_id") is None and curr.get("slot_id") is not None:
+            merged["slot_id"] = curr["slot_id"]
         return merged
 
     return None
 
 
+def dedup_events(
+    events: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Collapse redundant adjacent events using stored timestamps.
+
+    This is a pure presentation-layer transform: the source list is not
+    modified and a new list is returned.
+    """
+    if not events:
+        return events
+    result: list[dict[str, object]] = [events[0]]
+    for evt in events[1:]:
+        merged = _try_merge(result[-1], evt)
+        if merged is not None:
+            result[-1] = merged
+        else:
+            result.append(evt)
+    return result
+
+
 class ActivityBuffer:
-    """Persisted ring buffer of lock activity events."""
+    """Persisted ring buffer of lock activity events.
+
+    Raw events are always stored as-is.  Deduplication is applied at
+    read time in ``recent()`` so the original data is never lost.
+    """
 
     def __init__(self, hass: HomeAssistant, store: Store | None = None) -> None:
         """Initialize the buffer."""
@@ -98,9 +122,7 @@ class ActivityBuffer:
         self._save_unsub: CALLBACK_TYPE | None = None
 
     def append(self, event_data: dict[str, object], action: str) -> None:
-        """Append an event, deduplicating redundant rapid events."""
-        if self._try_merge(event_data, action):
-            return
+        """Append a raw event and schedule a save."""
         self._buffer.append(
             {
                 **event_data,
@@ -110,120 +132,24 @@ class ActivityBuffer:
         )
         self._schedule_save()
 
-    def _dedup_candidate(self, lock_name: object) -> dict[str, object] | None:
-        """Return the previous event if it can be merged with a new one.
-
-        Returns ``None`` when the buffer is empty, the previous event is
-        for a different lock, or the timestamp is outside the dedup window.
-        """
-        if not self._buffer:
-            return None
-        last = self._buffer[-1]
-        if last.get("lock") != lock_name:
-            return None
-        last_ts = last.get("timestamp")
-        if not last_ts or not isinstance(last_ts, str):
-            return None
-        try:
-            last_time = datetime.fromisoformat(last_ts)
-        except (ValueError, TypeError):
-            return None
-        if (datetime.now(UTC) - last_time).total_seconds() > DEDUP_WINDOW_SECONDS:
-            return None
-        return last
-
-    def _try_merge(self, event_data: dict[str, object], action: str) -> bool:
-        """Merge redundant lock events within a time window.
-
-        Handles physical+base pairs (the firmware reporting both
-        manual_lock and lock for one command) and same-state duplicates
-        (two lock commands within seconds, e.g. one-touch followed by
-        a lock-all automation).
-        """
-        last = self._dedup_candidate(event_data.get("lock"))
-        if last is None:
-            return False
-
-        last_action = last.get("action")
-
-        # Case 1: new event is a physical variant, previous is base
-        base_of_new = _PHYSICAL_TO_BASE.get(action)
-        if base_of_new and last_action == base_of_new:
-            if last.get("source") in _AUTOMATION_SOURCES:
-                last["source"] = "automation"
-            if not last.get("user_name") and event_data.get("user_name"):
-                last["user_name"] = event_data["user_name"]
-            if last.get("slot_id") is None and event_data.get("slot_id") is not None:
-                last["slot_id"] = event_data["slot_id"]
-            self._schedule_save()
-            return True
-
-        # Case 2: new event is base action, previous is physical variant
-        if _PHYSICAL_TO_BASE.get(last_action) == action:
-            source = event_data.get("source")
-            if source in _AUTOMATION_SOURCES:
-                source = "automation"
-            merged = {
-                **last,
-                **event_data,
-                "action": action,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-            if source:
-                merged["source"] = source
-            self._buffer[-1] = merged
-            self._schedule_save()
-            return True
-
-        # Case 3: exact same action repeated (e.g. two lock commands)
-        if last_action == action:
-            merged = {
-                **event_data,
-                "action": action,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-            if not merged.get("user_name") and last.get("user_name"):
-                merged["user_name"] = last["user_name"]
-            if merged.get("slot_id") is None and last.get("slot_id") is not None:
-                merged["slot_id"] = last["slot_id"]
-            self._buffer[-1] = merged
-            self._schedule_save()
-            return True
-
-        return False
-
     def recent(self, max_events: int = 20) -> list[dict[str, object]]:
-        """Return recent events, newest first."""
+        """Return recent events newest-first, with dedup applied."""
         events = list(self._buffer)
-        events.reverse()
-        return events[:max_events]
+        deduped = dedup_events(events)
+        deduped.reverse()
+        return deduped[:max_events]
 
-    @staticmethod
-    def _dedup_events(
-        events: list[dict[str, object]],
-    ) -> list[dict[str, object]]:
-        """Deduplicate redundant events using stored timestamps."""
-        if not events:
-            return events
-        result: list[dict[str, object]] = [events[0]]
-        for evt in events[1:]:
-            merged = _try_merge_stored(result[-1], evt)
-            if merged is not None:
-                result[-1] = merged
-            else:
-                result.append(evt)
-        return result
+    def raw_count(self) -> int:
+        """Return the number of raw (non-deduped) events in the buffer."""
+        return len(self._buffer)
 
     async def async_load(self) -> None:
-        """Load persisted events, deduplicating stale pairs on the fly."""
+        """Load persisted raw events into the buffer."""
         if self._store is None:
             return
         data = await self._store.async_load()
         if data and isinstance(data, list):
-            clean = self._dedup_events(data)
-            self._buffer.extend(clean)
-            if len(clean) < len(data):
-                self._schedule_save()
+            self._buffer.extend(data)
 
     async def _async_save(self, *_: object) -> None:
         """Persist the current buffer to disk."""
