@@ -1,6 +1,6 @@
 <h1 style="display: inline-flex; align-items: center; gap: 8px; margin: 0;">
   <span>Lockly</span>
-  <img src="assets/lockly-logo-keyhole-l-trust-blue.svg" alt="Lockly logo" width="32" height="32" />
+  <img src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-logo-keyhole-l-trust-blue.svg" alt="Lockly logo" width="32" height="32" />
 </h1>
 
 [![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
@@ -25,9 +25,9 @@ and safe.
       each with its own slots and MQTT settings.
     </td>
     <td width="60%">
-      <a href="assets/lockly-integration-entries.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-integration-entries.png">
         <img
-          src="assets/lockly-integration-entries.png"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-integration-entries.png"
           alt="Lockly integration entries"
           width="480"
           height="480"
@@ -43,9 +43,9 @@ and safe.
       states during bulk operations.
     </td>
     <td width="60%">
-      <a href="assets/lockly-card-multi.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-multi.png">
         <img
-          src="assets/lockly-card-multi.png"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-multi.png"
           alt="Multiple Lockly cards"
           width="480"
           height="480"
@@ -61,9 +61,9 @@ and safe.
       mode to test without sending MQTT updates.
     </td>
     <td width="60%">
-      <a href="assets/lockly-card-configuration.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-configuration.png">
         <img
-          src="assets/lockly-card-configuration.png"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-configuration.png"
           alt="Lockly card configuration"
           width="480"
           height="480"
@@ -78,9 +78,9 @@ and safe.
       Add individual locks or whole groups directly from the Lovelace editor.
     </td>
     <td width="60%">
-      <a href="assets/lockly-card-entity-picker.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-entity-picker.png">
         <img
-          src="assets/lockly-card-entity-picker.png"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-entity-picker.png"
           alt="Lockly card entity picker"
           width="480"
           height="480"
@@ -96,9 +96,9 @@ and safe.
       feedback before applying changes.
     </td>
     <td width="60%">
-      <a href="assets/lockly-edit-slot-dialog.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png">
         <img
-          src="assets/lockly-edit-slot-dialog.png"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png"
           alt="Edit slot dialog"
           width="480"
           height="480"
@@ -115,9 +115,9 @@ and safe.
       and a per-lock summary. Click any entry to jump to that lock's history.
     </td>
     <td width="60%">
-      <a href="assets/lockly-activity-card.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-activity-card.png">
         <img
-          src="assets/lockly-activity-card.png"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-activity-card.png"
           alt="Lockly activity card"
           width="480"
           height="480"
@@ -169,9 +169,9 @@ This integration is available directly in HACS under the Integration category.
 This integration ships with a bundled Lovelace card, so you can add it the
 usual way from the dashboard UI.
 
-<a href="assets/lockly-add-to-dashboard.png">
+<a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-add-to-dashboard.png">
   <img
-    src="assets/lockly-add-to-dashboard.png"
+    src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-add-to-dashboard.png"
     alt="Add Lockly card to dashboard"
     width="480"
     height="480"
