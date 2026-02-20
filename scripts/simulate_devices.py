@@ -465,14 +465,14 @@ class LocklySimulator:
         self.publish_state(device_name)
 
     def _handle_simulated_action(self, device_name: str, params: dict) -> None:
-        """Simulate a lock action with a specific user and source."""
+        """Simulate a lock action with optional user and source."""
         state = self.device_states[device_name]
         action = params.get("action")
         if not action:
             log.warning("simulate_action requires an 'action' field")
             return
-        user_id = params.get("user", 1)
-        source = params.get("source", "keypad")
+        user_id = params.get("user")
+        source = params.get("source", "manual")
 
         time.sleep(random.uniform(0.1, 0.3))  # noqa: S311
 
@@ -481,10 +481,14 @@ class LocklySimulator:
             state["lock_state"] = "unlocked" if action == "unlock" else "locked"
 
         state["action"] = action
-        state["action_source_name"] = source
+        state["action_source_name"] = source or ""
         state["action_user"] = user_id
         log.info(
-            "SIM %s %s via %s (user %s)", action.upper(), device_name, source, user_id
+            "SIM %s %s%s%s",
+            action.upper(),
+            device_name,
+            f" via {source}" if source else "",
+            f" (user {user_id})" if user_id is not None else "",
         )
         self.publish_state(device_name)
 

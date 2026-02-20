@@ -152,11 +152,13 @@ class LocklyActivityCard extends HTMLElement {
   }
 
   _lastUnlockFor(lockName) {
-    return this._events.find(
-      (e) =>
-        e.lock === lockName &&
-        e.action.endsWith("unlock") &&
-        !e.action.includes("failure")
+    const isUnlock = (e) =>
+      e.lock === lockName &&
+      e.action.endsWith("unlock") &&
+      !e.action.includes("failure");
+    return (
+      this._events.find((e) => isUnlock(e) && e.user_name) ||
+      this._events.find(isUnlock)
     );
   }
 
@@ -394,10 +396,15 @@ class LocklyActivityCard extends HTMLElement {
     }
 
     const metaParts = [];
-    if (this._isLockAction(action)) {
-      if (who) metaParts.push(escapeHtml(who));
-      if (source)
-        metaParts.push(`<span class="la-source">${escapeHtml(source)}</span>`);
+    if (who) metaParts.push(escapeHtml(who));
+    if (source)
+      metaParts.push(`<span class="la-source">${escapeHtml(source)}</span>`);
+
+    const isAnonymousUnlock =
+      !who &&
+      action.endsWith("unlock") &&
+      !action.includes("failure");
+    if (this._isLockAction(action) || isAnonymousUnlock) {
       const lastUnlock = this._lastUnlockFor(rawLock);
       if (lastUnlock) {
         const unlockWho =
@@ -413,10 +420,6 @@ class LocklyActivityCard extends HTMLElement {
           );
         }
       }
-    } else {
-      if (who) metaParts.push(escapeHtml(who));
-      if (source)
-        metaParts.push(`<span class="la-source">${escapeHtml(source)}</span>`);
     }
 
     return `

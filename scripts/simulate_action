@@ -13,8 +13,8 @@ set -euo pipefail
 
 LOCK=""
 ACTION=""
-USER=1
-SOURCE="keypad"
+USER=""
+SOURCE=""
 MQTT_HOST="${MQTT_HOST:-localhost}"
 
 while [[ $# -gt 0 ]]; do
@@ -30,10 +30,10 @@ while [[ $# -gt 0 ]]; do
             echo "Locks: Front Door, Back Door, Garage Door"
             echo ""
             echo "Examples:"
-            echo "  scripts/simulate_action \"Front Door\" unlock              # user 1 keypad unlock"
-            echo "  scripts/simulate_action \"Back Door\" unlock --user 3      # user 3 keypad unlock"
-            echo "  scripts/simulate_action \"Front Door\" lock                # keypad lock"
-            echo "  scripts/simulate_action \"Front Door\" manual_unlock       # manual unlock"
+            echo "  scripts/simulate_action \"Front Door\" unlock --user 1     # user 1 keypad unlock"
+            echo "  scripts/simulate_action \"Back Door\" lock                 # anonymous lock (no user/source)"
+            echo "  scripts/simulate_action \"Front Door\" lock --source rf    # RF lock (automation)"
+            echo "  scripts/simulate_action \"Front Door\" manual_lock         # manual lock"
             exit 0
             ;;
         -*)
@@ -57,12 +57,18 @@ done
 if [[ -z "${LOCK}" || -z "${ACTION}" ]]; then
     echo "Error: lock name and action required" >&2
     echo "Usage: scripts/simulate_action <lock-name> <action> [--user N] [--source keypad|rfid|manual|rf]" >&2
-    echo "  e.g. scripts/simulate_action \"Front Door\" unlock --user 3" >&2
+    echo "  e.g. scripts/simulate_action \"Front Door\" unlock --user 1" >&2
     exit 1
 fi
 
-PAYLOAD=$(printf '{"simulate_action": {"user": %d, "source": "%s", "action": "%s"}}' "${USER}" "${SOURCE}" "${ACTION}")
+INNER='"action": "'"${ACTION}"'"'
+[[ -n "${USER}" ]]   && INNER+=', "user": '"${USER}"
+[[ -n "${SOURCE}" ]] && INNER+=', "source": "'"${SOURCE}"'"'
+PAYLOAD='{"simulate_action": {'"${INNER}"'}}'
 TOPIC="zigbee2mqtt/${LOCK}/set"
 
-echo "${ACTION} → ${LOCK} (user=${USER}, source=${SOURCE})"
+DESC="${ACTION} → ${LOCK}"
+[[ -n "${USER}" ]]   && DESC+=" (user=${USER})"
+[[ -n "${SOURCE}" ]] && DESC+=" (source=${SOURCE})"
+echo "${DESC}"
 mosquitto_pub -h "${MQTT_HOST}" -t "${TOPIC}" -m "${PAYLOAD}"
