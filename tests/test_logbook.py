@@ -95,3 +95,32 @@ def test_rfid_source(describe: dict) -> None:
         )
     )
     assert "RFID" in result["message"]
+
+
+def test_automation_source(describe: dict) -> None:
+    cb = describe[EVENT_LOCKLY_LOCK_ACTIVITY]
+    result = cb(
+        _make_event(
+            {
+                "lock": "Front Door",
+                "action": "lock",
+                "source": "automation",
+            }
+        )
+    )
+    assert "automation" in result["message"]
+
+
+def test_manual_lock_label(describe: dict) -> None:
+    """manual_lock should produce 'locked' (not 'manually locked')."""
+    cb = describe[EVENT_LOCKLY_LOCK_ACTIVITY]
+    result = cb(
+        _make_event(
+            {
+                "lock": "Front Door",
+                "action": "manual_lock",
+                "source": "manual",
+            }
+        )
+    )
+    assert result["message"] == "locked via manual"

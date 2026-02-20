@@ -19,6 +19,7 @@ SOURCE_LABELS: dict[str, str] = {
     "rfid": "RFID",
     "manual": "manual",
     "rf": "remote",
+    "automation": "automation",
 }
 
 ACTION_LABELS: dict[str, str] = {
@@ -27,8 +28,8 @@ ACTION_LABELS: dict[str, str] = {
     "auto_lock": "auto-locked",
     "key_lock": "locked with key",
     "key_unlock": "unlocked with key",
-    "manual_lock": "manually locked",
-    "manual_unlock": "manually unlocked",
+    "manual_lock": "locked",
+    "manual_unlock": "unlocked",
     "one_touch_lock": "one-touch locked",
     "schedule_lock": "schedule locked",
     "schedule_unlock": "schedule unlocked",

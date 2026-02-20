@@ -40,8 +40,8 @@ const ACTION_LABELS = {
   key_lock: "Key locked",
   key_unlock: "Key unlocked",
   auto_lock: "Auto locked",
-  manual_lock: "Manually locked",
-  manual_unlock: "Manually unlocked",
+  manual_lock: "Locked",
+  manual_unlock: "Unlocked",
   one_touch_lock: "One-touch locked",
   lock_failure_invalid_pin_or_id: "Failed unlock (bad PIN)",
   unlock_failure_invalid_pin_or_id: "Failed unlock (bad PIN)",
@@ -60,6 +60,7 @@ const SOURCE_LABELS = {
   rfid: "RFID",
   manual: "Manual",
   rf: "Remote",
+  automation: "Automation",
 };
 
 function relativeTime(isoString) {
@@ -152,7 +153,10 @@ class LocklyActivityCard extends HTMLElement {
 
   _lastUnlockFor(lockName) {
     return this._events.find(
-      (e) => e.lock === lockName && e.action === "unlock"
+      (e) =>
+        e.lock === lockName &&
+        e.action.endsWith("unlock") &&
+        !e.action.includes("failure")
     );
   }
 
@@ -391,6 +395,9 @@ class LocklyActivityCard extends HTMLElement {
 
     const metaParts = [];
     if (this._isLockAction(action)) {
+      if (who) metaParts.push(escapeHtml(who));
+      if (source)
+        metaParts.push(`<span class="la-source">${escapeHtml(source)}</span>`);
       const lastUnlock = this._lastUnlockFor(rawLock);
       if (lastUnlock) {
         const unlockWho =

@@ -88,3 +88,89 @@ async def test_save_debounced(buf: ActivityBuffer) -> None:
         assert mock_later.call_count == 1
         buf.append({"lock": "B"}, "unlock")
         assert mock_later.call_count == 1
+
+
+# --- Deduplication tests ---
+
+
+@pytest.mark.asyncio
+async def test_dedup_manual_lock_then_lock_rf(buf: ActivityBuffer) -> None:
+    """manual_lock followed by lock(rf) collapses into one automation event."""
+    buf.append({"lock": "Front Door", "source": "manual"}, "manual_lock")
+    buf.append({"lock": "Front Door", "source": "rf"}, "lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_dedup_lock_rf_then_manual_lock(buf: ActivityBuffer) -> None:
+    """lock(rf) followed by manual_lock collapses into one automation event."""
+    buf.append({"lock": "Front Door", "source": "rf"}, "lock")
+    buf.append({"lock": "Front Door", "source": "manual"}, "manual_lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "lock"
+    assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_dedup_preserves_user_info(buf: ActivityBuffer) -> None:
+    """User info from the manual event is preserved after merge."""
+    buf.append(
+        {"lock": "Front Door", "source": "manual", "user_name": "Alice", "slot_id": 3},
+        "manual_lock",
+    )
+    buf.append({"lock": "Front Door", "source": "rf"}, "lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["user_name"] == "Alice"
+    assert recent[0]["slot_id"] == 3
+    assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_dedup_unlock_pair(buf: ActivityBuffer) -> None:
+    """manual_unlock + unlock(rf) merges the same way."""
+    buf.append({"lock": "Front Door", "source": "manual"}, "manual_unlock")
+    buf.append({"lock": "Front Door", "source": "rf"}, "unlock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "unlock"
+    assert recent[0]["source"] == "automation"
+
+
+@pytest.mark.asyncio
+async def test_no_dedup_different_locks(buf: ActivityBuffer) -> None:
+    """Events for different locks are never merged."""
+    buf.append({"lock": "Front Door", "source": "manual"}, "manual_lock")
+    buf.append({"lock": "Back Door", "source": "rf"}, "lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 2
+
+
+@pytest.mark.asyncio
+async def test_no_dedup_unrelated_actions(buf: ActivityBuffer) -> None:
+    """Non-complementary actions on the same lock are not merged."""
+    buf.append({"lock": "Front Door"}, "unlock")
+    buf.append({"lock": "Front Door"}, "lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 2
+
+
+@pytest.mark.asyncio
+async def test_standalone_manual_lock_kept(buf: ActivityBuffer) -> None:
+    """A single manual_lock without a following base lock stays in the buffer."""
+    buf.append({"lock": "Front Door", "source": "manual"}, "manual_lock")
+
+    recent = buf.recent(max_events=10)
+    assert len(recent) == 1
+    assert recent[0]["action"] == "manual_lock"
+    assert recent[0]["source"] == "manual"
