@@ -936,6 +936,12 @@ class LocklyManager:
             return []
         return self._activity.recent(max_events)
 
+    def get_last_unlockers(self) -> dict[str, dict[str, object]]:
+        """Return the most recent identified unlocker per lock."""
+        if self._activity is None:
+            return {}
+        return self._activity.last_unlockers()
+
     async def handle_mqtt_action(
         self,
         lock_name: str,

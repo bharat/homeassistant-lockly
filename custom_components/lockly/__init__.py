@@ -186,10 +186,13 @@ async def _register_websocket_handlers(hass: HomeAssistant) -> None:
         max_events = msg.get("max_events", 20)
         runtime = hass.data.get(DOMAIN, {}).get(entry_id)
         if runtime is None:
-            connection.send_result(msg["id"], [])
+            connection.send_result(msg["id"], {"events": [], "last_unlockers": {}})
             return
         events = runtime.manager.get_recent_activity(max_events)
-        connection.send_result(msg["id"], events)
+        last_unlockers = runtime.manager.get_last_unlockers()
+        connection.send_result(
+            msg["id"], {"events": events, "last_unlockers": last_unlockers}
+        )
 
     websocket_api.async_register_command(hass, websocket_recent_activity)
 

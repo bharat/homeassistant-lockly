@@ -93,6 +93,7 @@ class LocklyActivityCard extends HTMLElement {
       this.appendChild(this._card);
     }
     this._events = this._events || [];
+    this._lastUnlockers = this._lastUnlockers || {};
     this._render();
   }
 
@@ -126,12 +127,18 @@ class LocklyActivityCard extends HTMLElement {
   async _fetchEvents() {
     if (!this._hass?.connection || !this._config?.entry_id) return;
     try {
-      const events = await this._hass.connection.sendMessagePromise({
+      const result = await this._hass.connection.sendMessagePromise({
         type: WS_ACTIVITY_TYPE,
         entry_id: this._config.entry_id,
         max_events: this._config.max_events || 5,
       });
-      this._events = events || [];
+      if (Array.isArray(result)) {
+        this._events = result;
+        this._lastUnlockers = {};
+      } else {
+        this._events = result?.events || [];
+        this._lastUnlockers = result?.last_unlockers || {};
+      }
       this._render();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -153,6 +160,7 @@ class LocklyActivityCard extends HTMLElement {
   }
 
   _lastUnlockFor(lockName) {
+    if (this._lastUnlockers?.[lockName]) return this._lastUnlockers[lockName];
     const isUnlock = (e) =>
       e.lock === lockName &&
       e.action.endsWith("unlock") &&

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
     from homeassistant.helpers.storage import Store
 
-MAX_EVENTS = 100
+MAX_EVENTS = 500
 DEDUP_WINDOW_SECONDS = 5
 DEDUP_WINDOW_PHYSICAL = 60
 
@@ -155,6 +155,26 @@ class ActivityBuffer:
         deduped = dedup_events(events)
         deduped.reverse()
         return deduped[:max_events]
+
+    def last_unlockers(self) -> dict[str, dict[str, object]]:
+        """Return the most recent identified unlock per lock.
+
+        Scans the full raw buffer in reverse so the result is independent
+        of the ``max_events`` display cap.
+        """
+        result: dict[str, dict[str, object]] = {}
+        for evt in reversed(self._buffer):
+            lock = evt.get("lock")
+            if not lock or lock in result:
+                continue
+            action = str(evt.get("action", ""))
+            if (
+                action.endswith("unlock")
+                and "failure" not in action
+                and evt.get("user_name")
+            ):
+                result[lock] = dict(evt)
+        return result
 
     def raw_count(self) -> int:
         """Return the number of raw (non-deduped) events in the buffer."""

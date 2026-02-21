@@ -421,6 +421,93 @@ async def test_loaded_clean_data_unchanged(
     assert recent[1]["action"] == "unlock"
 
 
+# --- last_unlockers() ---
+
+
+@pytest.mark.asyncio
+async def test_last_unlockers_basic(buf: ActivityBuffer) -> None:
+    """Returns the most recent identified unlocker per lock."""
+    buf.append(
+        {"lock": "Front Door", "source": "keypad", "user_name": "Alice"}, "unlock"
+    )
+    buf.append({"lock": "Front Door", "source": "automation"}, "lock")
+    buf.append(
+        {"lock": "Back Door", "source": "keypad", "user_name": "Bob"},
+        "unlock",
+    )
+
+    result = buf.last_unlockers()
+    assert set(result) == {"Front Door", "Back Door"}
+    assert result["Front Door"]["user_name"] == "Alice"
+    assert result["Back Door"]["user_name"] == "Bob"
+
+
+@pytest.mark.asyncio
+async def test_last_unlockers_picks_most_recent(buf: ActivityBuffer) -> None:
+    """When multiple identified unlocks exist, the most recent wins."""
+    buf.append(
+        {"lock": "Front Door", "source": "keypad", "user_name": "Alice"}, "unlock"
+    )
+    buf.append({"lock": "Front Door", "source": "automation"}, "lock")
+    buf.append(
+        {"lock": "Front Door", "source": "keypad", "user_name": "Bob"},
+        "unlock",
+    )
+
+    result = buf.last_unlockers()
+    assert result["Front Door"]["user_name"] == "Bob"
+
+
+@pytest.mark.asyncio
+async def test_last_unlockers_ignores_anonymous(buf: ActivityBuffer) -> None:
+    """Unlocks without user_name are skipped."""
+    buf.append(
+        {"lock": "Front Door", "source": "keypad", "user_name": "Alice"}, "unlock"
+    )
+    buf.append({"lock": "Front Door", "source": "manual"}, "manual_unlock")
+
+    result = buf.last_unlockers()
+    assert result["Front Door"]["user_name"] == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_last_unlockers_no_identified_unlocks(buf: ActivityBuffer) -> None:
+    """Lock with only anonymous unlocks does not appear."""
+    buf.append({"lock": "Front Door", "source": "manual"}, "manual_unlock")
+    buf.append({"lock": "Front Door", "source": "automation"}, "lock")
+
+    result = buf.last_unlockers()
+    assert "Front Door" not in result
+
+
+@pytest.mark.asyncio
+async def test_last_unlockers_beyond_recent(buf: ActivityBuffer) -> None:
+    """Finds identified unlocker even when buried beyond max_events."""
+    buf.append(
+        {"lock": "Front Door", "source": "keypad", "user_name": "Alice"}, "unlock"
+    )
+    for i in range(30):
+        buf.append({"lock": f"Lock {i}"}, "lock")
+
+    recent = buf.recent(max_events=5)
+    assert not any(e.get("user_name") == "Alice" for e in recent)
+
+    result = buf.last_unlockers()
+    assert result["Front Door"]["user_name"] == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_last_unlockers_ignores_failures(buf: ActivityBuffer) -> None:
+    """Unlock failures are not counted as identified unlocks."""
+    buf.append(
+        {"lock": "Front Door", "source": "keypad", "user_name": "Eve"},
+        "unlock_failure",
+    )
+
+    result = buf.last_unlockers()
+    assert "Front Door" not in result
+
+
 # --- dedup_events() unit tests ---
 
 
