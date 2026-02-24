@@ -443,7 +443,7 @@ async def _subscribe_mqtt(
             except UnicodeDecodeError:
                 payload = payload.decode(errors="replace")
         lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
-        if not lock_name or lock_name not in manager.lock_names:
+        if not lock_name:
             return
         LOGGER.debug("MQTT %s: %s", topic, payload)
         await manager.handle_mqtt_action(lock_name, str(payload))
@@ -465,7 +465,7 @@ async def _subscribe_mqtt(
         if not isinstance(payload, dict):
             return
         lock_name = topic[len(manager.mqtt_topic) + 1 :]
-        if not lock_name or lock_name not in manager.lock_names:
+        if not lock_name:
             return
         action = payload.get("action")
         if action:
