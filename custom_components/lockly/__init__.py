@@ -173,6 +173,7 @@ async def _register_websocket_handlers(hass: HomeAssistant) -> None:
             vol.Optional("max_events", default=20): vol.All(
                 vol.Coerce(int), vol.Range(min=1, max=100)
             ),
+            vol.Optional("lock_entities"): [cv.string],
         }
     )
     @websocket_api.async_response
@@ -188,8 +189,23 @@ async def _register_websocket_handlers(hass: HomeAssistant) -> None:
         if runtime is None:
             connection.send_result(msg["id"], {"events": [], "last_unlockers": {}})
             return
+
+        lock_filter: set[str] | None = None
+        raw_entities = msg.get("lock_entities")
+        if raw_entities:
+            names = runtime.manager.resolve_lock_names_for_entities(raw_entities)
+            if names:
+                lock_filter = set(names)
+
         events = runtime.manager.get_recent_activity(max_events)
         last_unlockers = runtime.manager.get_last_unlockers()
+
+        if lock_filter is not None:
+            events = [e for e in events if e.get("lock") in lock_filter]
+            last_unlockers = {
+                k: v for k, v in last_unlockers.items() if k in lock_filter
+            }
+
         connection.send_result(
             msg["id"], {"events": events, "last_unlockers": last_unlockers}
         )
@@ -427,7 +443,7 @@ async def _subscribe_mqtt(
             except UnicodeDecodeError:
                 payload = payload.decode(errors="replace")
         lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
-        if not lock_name:
+        if not lock_name or lock_name not in manager.lock_names:
             return
         LOGGER.debug("MQTT %s: %s", topic, payload)
         await manager.handle_mqtt_action(lock_name, str(payload))
@@ -449,7 +465,7 @@ async def _subscribe_mqtt(
         if not isinstance(payload, dict):
             return
         lock_name = topic[len(manager.mqtt_topic) + 1 :]
-        if not lock_name:
+        if not lock_name or lock_name not in manager.lock_names:
             return
         action = payload.get("action")
         if action:

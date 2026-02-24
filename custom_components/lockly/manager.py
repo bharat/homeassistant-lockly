@@ -225,6 +225,11 @@ class LocklyManager:
             names.append(entity_id)
         return names
 
+    def resolve_lock_names_for_entities(self, entity_ids: list[str]) -> list[str]:
+        """Resolve entity IDs (locks or groups) to Zigbee2MQTT friendly names."""
+        expanded = self._expand_lock_entity_ids(entity_ids)
+        return self._resolve_lock_names_from_entities(expanded)
+
     def _expand_lock_entity_ids(self, entity_ids: Iterable[str]) -> list[str]:
         """Expand lock entity ids, resolving groups to lock entities."""
         expanded: list[str] = []

@@ -87,7 +87,7 @@ function escapeHtml(str) {
 
 class LocklyActivityCard extends HTMLElement {
   setConfig(config) {
-    this._config = { view: "recent", max_events: 5, ...config };
+    this._config = { view: "recent", max_events: 5, lock_entities: [], ...config };
     if (!this._card) {
       this._card = document.createElement("ha-card");
       this.appendChild(this._card);
@@ -127,11 +127,16 @@ class LocklyActivityCard extends HTMLElement {
   async _fetchEvents() {
     if (!this._hass?.connection || !this._config?.entry_id) return;
     try {
-      const result = await this._hass.connection.sendMessagePromise({
+      const wsMsg = {
         type: WS_ACTIVITY_TYPE,
         entry_id: this._config.entry_id,
         max_events: this._config.max_events || 5,
-      });
+      };
+      const lockEntities = this._config.lock_entities;
+      if (Array.isArray(lockEntities) && lockEntities.length) {
+        wsMsg.lock_entities = lockEntities;
+      }
+      const result = await this._hass.connection.sendMessagePromise(wsMsg);
       if (Array.isArray(result)) {
         this._events = result;
         this._lastUnlockers = {};
@@ -450,6 +455,7 @@ LocklyActivityCard.getConfigElement = () =>
 LocklyActivityCard.getStubConfig = () => ({
   title: "Lock Activity",
   entry_id: "",
+  lock_entities: [],
   view: "recent",
   max_events: 5,
 });
@@ -466,6 +472,7 @@ class LocklyActivityCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = {
       title: "Lock Activity",
+      lock_entities: [],
       view: "recent",
       max_events: 5,
       ...config,
@@ -479,6 +486,10 @@ class LocklyActivityCardEditor extends HTMLElement {
     if (!this._entriesLoaded) {
       this._entriesLoaded = true;
       this._loadEntries();
+    }
+    const form = this.querySelector("#la-entities-form");
+    if (form) {
+      form.hass = this._hass;
     }
     if (this._needsRender || !this._rendered) {
       this._render();
@@ -530,6 +541,9 @@ class LocklyActivityCardEditor extends HTMLElement {
     const title = this._config?.title || "";
     const view = this._config?.view || "recent";
     const maxEvents = this._config?.max_events || 5;
+    const lockEntities = Array.isArray(this._config?.lock_entities)
+      ? this._config.lock_entities
+      : [];
 
     const entrySelect =
       entries.length > 1
@@ -549,14 +563,19 @@ class LocklyActivityCardEditor extends HTMLElement {
       <style>
         .container { padding: 16px; }
         .field { margin-bottom: 16px; width: 100%; }
-        .toggle-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 16px;
+        .section-title {
+          font-weight: 600;
+          margin: 16px 0 8px;
         }
+        .section-title:first-child { margin-top: 0; }
+        .section-desc {
+          color: var(--secondary-text-color);
+          margin: 0 0 16px 0;
+        }
+        ha-form { display: block; }
       </style>
       <div class="container">
+        <div class="section-title">General</div>
         <ha-textfield id="la-title" class="field" label="Title"></ha-textfield>
         ${entrySelect}
         <ha-select id="la-view" class="field" label="Default view">
@@ -571,6 +590,11 @@ class LocklyActivityCardEditor extends HTMLElement {
           min="1"
           max="100"
         ></ha-textfield>
+        <div class="section-title">Locks</div>
+        <p class="section-desc">
+          Filter activity to specific locks or lock groups. Leave empty to show all.
+        </p>
+        <ha-form id="la-entities-form"></ha-form>
       </div>`;
 
     const titleField = this.querySelector("#la-title");
@@ -621,6 +645,32 @@ class LocklyActivityCardEditor extends HTMLElement {
           this._config = { ...this._config, max_events: val };
           this._emitConfigChanged();
         }
+      });
+    }
+
+    const form = this.querySelector("#la-entities-form");
+    if (form) {
+      form.hass = this._hass;
+      form.schema = [
+        {
+          name: "lock_entities",
+          selector: {
+            entity: {
+              multiple: true,
+              domain: ["lock", "group"],
+            },
+          },
+        },
+      ];
+      form.data = { lock_entities: lockEntities };
+      form.computeLabel = () => "Locks";
+      form.addEventListener("value-changed", (ev) => {
+        const value = ev.detail?.value || {};
+        this._config = {
+          ...this._config,
+          lock_entities: value.lock_entities || [],
+        };
+        this._emitConfigChanged();
       });
     }
   }
