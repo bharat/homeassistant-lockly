@@ -104,10 +104,16 @@ def _try_merge(
     return None
 
 
+_DEDUP_LOOKBACK = 10
+
+
 def dedup_events(
     events: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    """Collapse redundant adjacent events using stored timestamps.
+    """Collapse redundant events using stored timestamps.
+
+    Looks back through recent result entries so that interleaved events
+    from different locks (e.g. batch PIN operations) are still merged.
 
     This is a pure presentation-layer transform: the source list is not
     modified and a new list is returned.
@@ -116,10 +122,15 @@ def dedup_events(
         return events
     result: list[dict[str, object]] = [events[0]]
     for evt in events[1:]:
-        merged = _try_merge(result[-1], evt)
-        if merged is not None:
-            result[-1] = merged
-        else:
+        merged = False
+        lo = max(len(result) - _DEDUP_LOOKBACK, 0)
+        for i in range(len(result) - 1, lo - 1, -1):
+            candidate = _try_merge(result[i], evt)
+            if candidate is not None:
+                result[i] = candidate
+                merged = True
+                break
+        if not merged:
             result.append(evt)
     return result
 

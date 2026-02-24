@@ -55,6 +55,8 @@ LOCK_ACTIONS = {
     "schedule_unlock",
     "manual_lock",
     "manual_unlock",
+    "pin_code_added",
+    "pin_code_deleted",
     "non_access_user_operational_event",
 }
 
@@ -110,6 +112,8 @@ def _parse_state_topic(
 
     action_source_name = data.get("action_source_name")
     if not isinstance(action_source_name, str):
+        action_source_name = None
+    if action in ("pin_code_added", "pin_code_deleted"):
         action_source_name = None
 
     event: dict[str, object] = {

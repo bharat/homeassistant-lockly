@@ -273,6 +273,35 @@ def test_load_slots_store_raw_list(tmp_path: Path) -> None:
     assert slots == {1: "Bob"}
 
 
+def test_pin_code_added_strips_stale_source() -> None:
+    """pin_code_added should not carry forward the stale action_source_name."""
+    pin_json = (
+        '{"action":"pin_code_added","action_source":1,'
+        '"action_source_name":"rf","action_user":10,'
+        '"lock_state":"locked","state":"LOCK"}'
+    )
+    line = _z2m_state_line("2026-02-24 21:48:30", "Front Door Lock", pin_json)
+    events = parse_log([line])
+    assert len(events) == 1
+    assert events[0]["action"] == "pin_code_added"
+    assert events[0]["slot_id"] == 10
+    assert "source" not in events[0]
+
+
+def test_pin_code_deleted_strips_stale_source() -> None:
+    """pin_code_deleted should not carry forward the stale action_source_name."""
+    pin_json = (
+        '{"action":"pin_code_deleted","action_source":0,'
+        '"action_source_name":"keypad","action_user":5,'
+        '"lock_state":"locked","state":"LOCK"}'
+    )
+    line = _z2m_state_line("2026-02-24 22:00:00", "Front Door Lock", pin_json)
+    events = parse_log([line])
+    assert len(events) == 1
+    assert events[0]["action"] == "pin_code_deleted"
+    assert "source" not in events[0]
+
+
 # -- full pipeline ----------------------------------------------------
 
 

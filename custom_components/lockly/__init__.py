@@ -477,6 +477,8 @@ async def _subscribe_mqtt(
             action_source_name = payload.get("action_source_name")
             if not isinstance(action_source_name, str):
                 action_source_name = None
+            if action in ("pin_code_added", "pin_code_deleted"):
+                action_source_name = None
             LOGGER.debug("MQTT %s action: %s", topic, action)
             await manager.handle_mqtt_action(
                 lock_name,

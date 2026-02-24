@@ -520,6 +520,75 @@ def test_dedup_events_single() -> None:
     assert dedup_events(events) == events
 
 
+def test_dedup_interleaved_same_action() -> None:
+    """Same-action events for one lock merge even when interleaved with others."""
+    events = [
+        {
+            "lock": "A",
+            "action": "pin_code_added",
+            "slot_id": 10,
+            "timestamp": "2026-01-01T00:00:00.000+00:00",
+        },
+        {
+            "lock": "B",
+            "action": "pin_code_added",
+            "slot_id": 10,
+            "timestamp": "2026-01-01T00:00:00.100+00:00",
+        },
+        {
+            "lock": "A",
+            "action": "pin_code_added",
+            "slot_id": 10,
+            "timestamp": "2026-01-01T00:00:00.200+00:00",
+        },
+        {
+            "lock": "C",
+            "action": "pin_code_added",
+            "slot_id": 10,
+            "timestamp": "2026-01-01T00:00:00.300+00:00",
+        },
+        {
+            "lock": "A",
+            "action": "pin_code_added",
+            "slot_id": 10,
+            "timestamp": "2026-01-01T00:00:01.500+00:00",
+        },
+    ]
+    result = dedup_events(events)
+    assert len(result) == 3
+    locks = [e["lock"] for e in result]
+    assert locks == ["A", "B", "C"]
+
+
+def test_dedup_interleaved_physical_base_pair() -> None:
+    """manual_lock + lock pair merges even when separated by another lock."""
+    events = [
+        {
+            "lock": "A",
+            "action": "manual_lock",
+            "source": "manual",
+            "timestamp": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "lock": "B",
+            "action": "lock",
+            "source": "rf",
+            "timestamp": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "lock": "A",
+            "action": "lock",
+            "source": "rf",
+            "timestamp": "2026-01-01T00:00:01+00:00",
+        },
+    ]
+    result = dedup_events(events)
+    assert len(result) == 2
+    a_evt = next(e for e in result if e["lock"] == "A")
+    assert a_evt["action"] == "lock"
+    assert a_evt["source"] == "automation"
+
+
 def test_dedup_events_physical_base_pair() -> None:
     events = [
         {
