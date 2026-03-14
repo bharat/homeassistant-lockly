@@ -410,7 +410,7 @@ class LocklyCard extends HTMLElement {
       return;
     }
     this._dialog = document.createElement("ha-dialog");
-    this._dialog.heading = "Edit Slot";
+    this._dialog.headerTitle = "Edit Slot";
     this._dialog.innerHTML = `
       <style>
         .dialog-content {
@@ -423,9 +423,14 @@ class LocklyCard extends HTMLElement {
           align-items: center;
           justify-content: space-between;
         }
-        ha-button[slot="secondaryAction"],
-        ha-button[slot="primaryAction"] {
-          margin-inline-start: 8px;
+        .dialog-footer {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 8px;
+          width: 100%;
+        }
+        .dialog-footer ha-button {
           min-width: 92px;
         }
         .danger {
@@ -454,19 +459,16 @@ class LocklyCard extends HTMLElement {
           <ha-switch id="lockly-slot-enabled"></ha-switch>
         </div>
       </div>
-      <ha-button
-        slot="secondaryAction"
-        id="lockly-slot-delete"
-        class="danger"
-        appearance="filled"
-        variant="danger"
-      >Delete</ha-button>
-      <ha-button slot="secondaryAction" id="lockly-slot-cancel" appearance="outlined"
-        >Cancel</ha-button
-      >
-      <ha-button slot="primaryAction" id="lockly-slot-save" appearance="filled"
-        >Apply</ha-button
-      >
+      <div slot="footer" class="dialog-footer">
+        <ha-button
+          id="lockly-slot-delete"
+          class="danger"
+          appearance="filled"
+          variant="danger"
+        >Delete</ha-button>
+        <ha-button id="lockly-slot-cancel" appearance="outlined">Cancel</ha-button>
+        <ha-button id="lockly-slot-save" appearance="filled">Apply</ha-button>
+      </div>
     `;
     this._dialog.addEventListener("closed", () => {
       this._editingSlotId = null;
@@ -475,7 +477,7 @@ class LocklyCard extends HTMLElement {
     this._dialog
       .querySelector("#lockly-slot-cancel")
       ?.addEventListener("click", () => {
-        this._dialog.open = false;
+        this._closeDialog();
       });
     this._dialog
       .querySelector("#lockly-slot-delete")
@@ -504,10 +506,32 @@ class LocklyCard extends HTMLElement {
     if (enabledField) {
       enabledField.checked = Boolean(slot.enabled);
     }
-    this._dialog.open = true;
+    this._openDialog();
     if (nameField && !nameField.value) {
       requestAnimationFrame(() => nameField.focus?.());
     }
+  }
+
+  _openDialog() {
+    if (!this._dialog) {
+      return;
+    }
+    if (typeof this._dialog.show === "function") {
+      this._dialog.show();
+      return;
+    }
+    this._dialog.open = true;
+  }
+
+  _closeDialog() {
+    if (!this._dialog) {
+      return;
+    }
+    if (typeof this._dialog.hide === "function") {
+      this._dialog.hide();
+      return;
+    }
+    this._dialog.open = false;
   }
 
   _openNewestSlotAfterAdd() {
@@ -584,7 +608,7 @@ class LocklyCard extends HTMLElement {
       console.error("Lockly apply failed", err);
       return;
     }
-    this._dialog.open = false;
+    this._closeDialog();
   }
 
   _deleteSlot() {
@@ -602,7 +626,7 @@ class LocklyCard extends HTMLElement {
         data.lock_entities = lockEntities;
       }
       this._hass.callService("lockly", "remove_slot", data);
-      this._dialog.open = false;
+      this._closeDialog();
     }
   }
 

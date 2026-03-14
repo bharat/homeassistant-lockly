@@ -151,6 +151,7 @@ and safe.
 ## Installation (HACS)
 
 This integration is available directly in HACS under the Integration category.
+Requires Home Assistant 2026.3.1 or newer.
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bharat&repository=homeassistant-lockly)
 

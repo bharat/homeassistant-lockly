@@ -55,6 +55,7 @@ PLATFORMS: list[Platform] = [
     Platform.EVENT,
     Platform.SENSOR,
 ]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 SERVICE_SCHEMA_ENTRY = vol.Schema(
     {

@@ -1,6 +1,6 @@
 {
   "name": "bharat/homeassistant-lockly",
-  "image": "mcr.microsoft.com/devcontainers/python:3.13",
+  "image": "mcr.microsoft.com/devcontainers/python:3.14",
   "postCreateCommand": "scripts/setup",
   "forwardPorts": [
     8123
