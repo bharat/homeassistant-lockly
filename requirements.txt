@@ -6,5 +6,5 @@ pip==26.0.1
 pytest==9.0.0
 pytest-homeassistant-custom-component
 ruff==0.15.11
-pre_commit==4.5.1
+pre_commit==4.6.0
 yq==3.4.3
