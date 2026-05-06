@@ -79,6 +79,12 @@ function relativeTime(isoString) {
   return `${diffDay}d ago`;
 }
 
+function absoluteTime(isoString) {
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString();
+}
+
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
@@ -395,6 +401,7 @@ class LocklyActivityCard extends HTMLElement {
     const who = userName || slotId || "";
     const source = evt.source ? SOURCE_LABELS[evt.source] || evt.source : "";
     const time = evt.timestamp ? relativeTime(evt.timestamp) : "";
+    const timeTitle = evt.timestamp ? absoluteTime(evt.timestamp) : "";
 
     let iconClass = "la-other";
     if (action.includes("unlock") || action === "key_unlock") {
@@ -428,7 +435,12 @@ class LocklyActivityCard extends HTMLElement {
           const unlockTime = lastUnlock.timestamp
             ? relativeTime(lastUnlock.timestamp)
             : "";
-          const timeSuffix = unlockTime ? ` (${unlockTime})` : "";
+          const unlockTitle = lastUnlock.timestamp
+            ? absoluteTime(lastUnlock.timestamp)
+            : "";
+          const timeSuffix = unlockTime
+            ? ` (<span title="${escapeHtml(unlockTitle)}">${unlockTime}</span>)`
+            : "";
           metaParts.push(
             `Last unlocked by ${escapeHtml(unlockWho)}${timeSuffix}`
           );
@@ -445,7 +457,7 @@ class LocklyActivityCard extends HTMLElement {
           <div class="la-action-line">${lockName} &middot; ${escapeHtml(label)}</div>
           ${metaParts.length ? `<div class="la-meta">${metaParts.join(" ")}</div>` : ""}
         </div>
-        <div class="la-time">${time}</div>
+        <div class="la-time"${timeTitle ? ` title="${escapeHtml(timeTitle)}"` : ""}>${time}</div>
       </div>`;
   }
 }
