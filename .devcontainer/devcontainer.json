@@ -53,6 +53,9 @@
     }
   },
   "mounts": [
-    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+    "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind",
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind"
   ]
 }
