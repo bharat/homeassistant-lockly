@@ -259,7 +259,7 @@ class LocklyActivityCard extends HTMLElement {
           font-size: 0.75rem;
         }
         .la-list {
-          padding: 0 0 16px;
+          padding: 0 16px 16px;
         }
         .la-row {
           display: flex;
@@ -344,7 +344,7 @@ class LocklyActivityCard extends HTMLElement {
         }
         .la-row:hover {
           background: var(--divider-color, rgba(0,0,0,0.04));
-          border-radius: 8px;
+          border-radius: 10px;
         }
       </style>
       <div class="la-header">
