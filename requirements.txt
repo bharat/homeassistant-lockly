@@ -8,3 +8,18 @@ pytest-homeassistant-custom-component
 ruff==0.15.12
 pre_commit==4.6.0
 yq==3.4.3
+
+# HA's helpers/service.py:_base_components() eagerly imports a hardcoded set of
+# components during services.yaml validation. `pip install homeassistant` does
+# not pull their per-integration deps (HA installs those lazily during setup,
+# but this code path bypasses that machinery), so we install them here.
+# Pins match HA's per-integration manifest.json values — these are chosen
+# for compatibility with the system libs HA assumes (e.g. libjpeg-turbo 2.x
+# for PyTurboJPEG 1.x), so they should be bumped in lockstep with HA itself.
+PyTurboJPEG==1.8.0
+ha-ffmpeg==3.2.2
+hassil==3.5.0
+home-assistant-intents==2026.3.3
+mutagen==1.47.0
+pymicro-vad==1.0.1
+pyspeex-noise==1.0.2

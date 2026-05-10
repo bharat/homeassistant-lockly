@@ -20,6 +20,23 @@ def _resolve_version() -> str:
 
     Called once at module load (before the event loop starts) so the
     result is cached and never triggers blocking I/O inside async code.
+
+    `manifest.json` is checked in with ``"version": "0.0.0"`` as a sentinel for
+    "unreleased source." The release workflow (.github/workflows/release.yml,
+    step "Adjust version number") rewrites it to the actual tag via ``yq``
+    before zipping the integration, so HACS installs see the real version.
+    JSON has no comment syntax, so this rationale lives here.
+
+    When the sentinel is detected, we fall back to the mtime of
+    ``frontend/lockly-card.js`` so the returned value still changes whenever
+    the frontend bundle does. The value is consumed as the ``?v=`` cache
+    buster on the registered Lovelace JS resources, ensuring browsers
+    re-fetch after a frontend edit.
+
+    Known limitation: only ``lockly-card.js``'s mtime is consulted, so editing
+    only another frontend file (e.g. ``lockly-activity-card.js``) does NOT
+    bump the cache buster. Browsers may keep serving stale JS until a forced
+    reload. See issue #67 / commit 58f12f1 for context.
     """
     version = "0.0.0"
     with (
