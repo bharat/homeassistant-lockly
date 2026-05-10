@@ -259,14 +259,13 @@ class LocklyActivityCard extends HTMLElement {
           font-size: 0.75rem;
         }
         .la-list {
-          padding: 0 16px 16px;
+          padding: 0 0 16px;
         }
         .la-row {
           display: flex;
           align-items: center;
           gap: 12px;
-          padding: 10px 12px;
-          margin: 0 -12px;
+          padding: 10px 16px;
           border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.08));
         }
         .la-row:last-child {
