@@ -265,7 +265,7 @@ class LocklyActivityCard extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 12px;
-          padding: 10px 0;
+          padding: 10px 16px;
           border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.08));
         }
         .la-row:last-child {
@@ -344,7 +344,7 @@ class LocklyActivityCard extends HTMLElement {
         }
         .la-row:hover {
           background: var(--divider-color, rgba(0,0,0,0.04));
-          border-radius: 8px;
+          border-radius: 10px;
         }
       </style>
       <div class="la-header">
