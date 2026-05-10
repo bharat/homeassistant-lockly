@@ -20,5 +20,6 @@ logger:
   logs:
     custom_components.lockly: debug
 
-# MQTT is configured via the UI (Settings > Integrations > MQTT).
-# After first launch, add MQTT with broker: localhost, port: 1883.
+# MQTT is pre-seeded as a config entry by scripts/develop (which invokes
+# scripts/seed_dev_mqtt.py), pointing at localhost:1883. To re-seed, delete
+# .storage/core.config_entries before re-running scripts/develop.

@@ -32,6 +32,11 @@ for arg in "$@"; do
     esac
 done
 
+# Pre-seed an MQTT config entry pointing at the local broker so a fresh
+# devcontainer comes up usable without the manual "Add Integration -> MQTT"
+# click after onboarding. Idempotent: no-op if an MQTT entry already exists.
+python3 scripts/seed_dev_mqtt.py
+
 COMMANDS=(
     "mosquitto -c ${MQTT_CONF}"
     "hass --config ${CONFIG_DIR} --debug"
