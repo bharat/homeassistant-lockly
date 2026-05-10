@@ -16,3 +16,5 @@ coverage.xml
 # Home Assistant configuration
 config/*
 !config/configuration.yaml
+!config/mosquitto.conf
+!config/mosquitto-verbose.conf
