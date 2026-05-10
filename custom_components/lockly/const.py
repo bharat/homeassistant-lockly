@@ -27,16 +27,10 @@ def _resolve_version() -> str:
     before zipping the integration, so HACS installs see the real version.
     JSON has no comment syntax, so this rationale lives here.
 
-    When the sentinel is detected, we fall back to the mtime of
-    ``frontend/lockly-card.js`` so the returned value still changes whenever
-    the frontend bundle does. The value is consumed as the ``?v=`` cache
-    buster on the registered Lovelace JS resources, ensuring browsers
-    re-fetch after a frontend edit.
-
-    Known limitation: only ``lockly-card.js``'s mtime is consulted, so editing
-    only another frontend file (e.g. ``lockly-activity-card.js``) does NOT
-    bump the cache buster. Browsers may keep serving stale JS until a forced
-    reload. See issue #67 / commit 58f12f1 for context.
+    When the sentinel is detected, we fall back to the latest mtime across
+    every ``frontend/*.js`` file. That value is consumed as the ``?v=``
+    cache buster on the registered Lovelace JS resources, so editing any
+    frontend file bumps the version and browsers refetch on next reload.
     """
     version = "0.0.0"
     with (
@@ -45,10 +39,9 @@ def _resolve_version() -> str:
     ):
         version = json.load(fh).get("version", "0.0.0")
     if version == "0.0.0":
-        with suppress(FileNotFoundError):
-            version = str(
-                int((_PACKAGE_DIR / "frontend" / "lockly-card.js").stat().st_mtime)
-            )
+        mtimes = [p.stat().st_mtime for p in (_PACKAGE_DIR / "frontend").glob("*.js")]
+        if mtimes:
+            version = str(int(max(mtimes)))
     return version
 
 
