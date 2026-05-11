@@ -21,6 +21,9 @@ class LocklyCard extends HTMLElement {
     if (!Object.prototype.hasOwnProperty.call(this._config, "show_bulk_actions")) {
       this._config = { ...this._config, show_bulk_actions: true };
     }
+    if (this._showDisabled === undefined) {
+      this._showDisabled = true;
+    }
     if (!this._card) {
       this._card = document.createElement("ha-card");
       this.appendChild(this._card);
@@ -177,7 +180,12 @@ class LocklyCard extends HTMLElement {
     const canEdit = !adminOnly || isAdmin || isExtraAdmin;
     this._canEdit = canEdit;
     const showBulkActions = this._config?.show_bulk_actions !== false;
-    const slots = this._getSlots();
+    const allSlots = this._getSlots();
+    const hasDisabledSlots = allSlots.some((slot) => !slot.enabled);
+    const showDisabled = this._showDisabled !== false;
+    const slots = showDisabled
+      ? allSlots
+      : allSlots.filter((slot) => slot.enabled);
     this._card.innerHTML = `
       <style>
         .header {
@@ -304,12 +312,49 @@ class LocklyCard extends HTMLElement {
           display: flex;
           gap: 8px;
         }
+        .slot-filter-tabs {
+          display: inline-flex;
+          gap: 2px;
+          font-size: 0.8rem;
+        }
+        .slot-filter-tabs button {
+          cursor: pointer;
+          border: none;
+          background: none;
+          padding: 2px 6px;
+          color: var(--secondary-text-color);
+          font-weight: 400;
+          font-size: inherit;
+          opacity: 0.7;
+        }
+        .slot-filter-tabs button:hover {
+          opacity: 1;
+        }
+        .slot-filter-tabs button.active {
+          color: var(--primary-color);
+          font-weight: 500;
+          opacity: 1;
+        }
+        .slot-filter-tabs .sep {
+          color: var(--divider-color, rgba(0,0,0,0.2));
+          font-weight: 300;
+          align-self: center;
+          font-size: 0.75rem;
+        }
       </style>
-      ${title
+      ${(title || hasDisabledSlots)
         ? `<div class="header">
         <div class="card-header">
-          <h1 class="card-header">${title}</h1>
+          ${title ? `<h1 class="card-header">${title}</h1>` : ""}
         </div>
+        ${hasDisabledSlots
+          ? `<div class="slot-filter-tabs">
+              <button data-filter="all" class="${showDisabled ? "active" : ""}">All</button>
+              <span class="sep">|</span>
+              <button data-filter="enabled" class="${showDisabled ? "" : "active"}">Enabled only</button>
+            </div>`
+          : ""
+        }
       </div>`
         : ""
       }
@@ -350,7 +395,9 @@ class LocklyCard extends HTMLElement {
           .join("")}
               </tbody>
             </table>`
-        : `<div class="empty ${title ? "" : "no-title"}">No slots yet. Use “Add slot” to create one.</div>`
+        : allSlots.length
+          ? `<div class="empty ${title ? "" : "no-title"}">No enabled slots. Switch to “All” to see disabled slots.</div>`
+          : `<div class="empty ${title ? "" : "no-title"}">No slots yet. Use “Add slot” to create one.</div>`
       }
       ${canEdit
         ? `<div class="footer-actions">
@@ -371,6 +418,16 @@ class LocklyCard extends HTMLElement {
   _attachHandlers() {
     const canEdit = Boolean(this._canEdit);
     const dryRun = Boolean(this._config?.dry_run);
+    this._card.querySelectorAll(".slot-filter-tabs button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const showDisabled = btn.getAttribute("data-filter") === "all";
+        if (this._showDisabled === showDisabled) {
+          return;
+        }
+        this._showDisabled = showDisabled;
+        this._render();
+      });
+    });
     this._card.querySelector("#add-slot")?.addEventListener("click", async () => {
       await this._hass.callService("lockly", "add_slot", {
         entry_id: this._config.entry_id,
