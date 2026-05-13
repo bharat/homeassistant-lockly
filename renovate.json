@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "mode": "full",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "labels": ["dependencies"],
+  "minimumReleaseAge": "14 days",
+  "packageRules": [
+    {
+      "matchManagers": ["pip_requirements"],
+      "groupName": "python dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "matchManagers": ["devcontainer"],
+      "groupName": "devcontainer"
+    },
+    {
+      "matchDepNames": ["homeassistant"],
+      "enabled": false,
+      "description": "homeassistant is upgraded in lockstep with pytest-homeassistant-custom-component (see AGENTS.md fleet policy). Let helper bumps drive the HA upgrade rather than bumping homeassistant directly."
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true,
+      "platformAutomerge": true
+    }
+  ]
+}
