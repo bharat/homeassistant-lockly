@@ -114,7 +114,7 @@ act -W .github/workflows/tests.yml
 
 ## Releases
 
-Tags use **SemVer**: `v<MAJOR>.<MINOR>.<PATCH>` (e.g. `v1.0.4`). Release titles use `Lockly v<MAJOR>.<MINOR>.<PATCH>` (e.g. `Lockly v1.0.4`).
+Tags use **CalVer**: `v<YYYY>.<M>.<DD>` (e.g. `v2026.5.13`). Release titles use `Lockly v<YYYY>.<M>.<DD>` (e.g. `Lockly v2026.5.13`). Matches the fleet-wide HA-integration convention (triad-ams set the canonical shape). **Historical SemVer tags (`v1.0.x`) remain as-is** — the CalVer convention only applies going forward.
 
 The release workflow (`.github/workflows/release.yml`) fires on **release published** (not on tag push). It rewrites `manifest.json` version to the tag via `yq`, zips `custom_components/lockly`, and uploads the zip as a release asset.
 
@@ -126,7 +126,7 @@ Build the GitHub release body in three parts:
 
 End with `**Full Changelog**: <compare link>` (GitHub auto-generates).
 
-**Canonical example**: https://github.com/bharat/homeassistant-lockly/releases/tag/v1.0.4 — bharat established this format on 2026-05-10. When in doubt, mirror that release's shape.
+**Canonical body example**: https://github.com/bharat/homeassistant-lockly/releases/tag/v1.0.4 — bharat established this body shape on 2026-05-10. Mirror its three-part structure (the tag in that example is the old SemVer format; new releases use the CalVer convention above).
 
 ## What NOT to touch
 
