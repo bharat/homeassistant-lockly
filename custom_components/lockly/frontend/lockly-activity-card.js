@@ -244,8 +244,10 @@ class LocklyActivityCard extends HTMLElement {
           font-size: inherit;
           opacity: 0.7;
         }
-        .la-tabs button:hover {
+        .la-tabs button:hover,
+        .la-tabs button:focus-visible {
           opacity: 1;
+          outline: none;
         }
         .la-tabs button.active {
           color: var(--primary-color);
@@ -339,10 +341,12 @@ class LocklyActivityCard extends HTMLElement {
           color: var(--secondary-text-color);
           text-align: center;
         }
-        .la-row {
+        .la-row[role="button"] {
           cursor: pointer;
+          outline: none;
         }
-        .la-row:hover {
+        .la-row[role="button"]:hover,
+        .la-row[role="button"]:focus-visible {
           background: var(--divider-color, rgba(0,0,0,0.04));
           border-radius: 10px;
         }
@@ -350,9 +354,9 @@ class LocklyActivityCard extends HTMLElement {
       <div class="la-header">
         <span class="la-title">${escapeHtml(title)}</span>
         <div class="la-tabs">
-          <button data-view="recent" class="${isPerLock ? "" : "active"}">Recent</button>
+          <button type="button" data-view="recent" class="${isPerLock ? "" : "active"}">Recent</button>
           <span class="la-sep">|</span>
-          <button data-view="per_lock" class="${isPerLock ? "active" : ""}">Per Lock</button>
+          <button type="button" data-view="per_lock" class="${isPerLock ? "active" : ""}">Per Lock</button>
         </div>
       </div>
       ${
@@ -372,9 +376,16 @@ class LocklyActivityCard extends HTMLElement {
     });
 
     this._card.querySelectorAll(".la-row[data-lock]").forEach((row) => {
-      row.addEventListener("click", () => {
+      const activate = () => {
         const lockName = row.getAttribute("data-lock");
         if (lockName) this._navigateToHistory(lockName);
+      };
+      row.addEventListener("click", activate);
+      row.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          activate();
+        }
       });
     });
   }
@@ -449,7 +460,7 @@ class LocklyActivityCard extends HTMLElement {
     }
 
     return `
-      <div class="la-row" data-lock="${escapeHtml(rawLock)}">
+      <div class="la-row" data-lock="${escapeHtml(rawLock)}" role="button" tabindex="0">
         <div class="la-icon ${iconClass}">
           <ha-icon icon="${icon}"></ha-icon>
         </div>
@@ -588,20 +599,20 @@ class LocklyActivityCardEditor extends HTMLElement {
       </style>
       <div class="container">
         <div class="section-title">General</div>
-        <ha-textfield id="la-title" class="field" label="Title"></ha-textfield>
+        <ha-input id="la-title" class="field" label="Title"></ha-input>
         ${entrySelect}
         <ha-select id="la-view" class="field" label="Default view">
           <mwc-list-item value="recent" ${view === "recent" ? "selected" : ""}>Recent Activity</mwc-list-item>
           <mwc-list-item value="per_lock" ${view === "per_lock" ? "selected" : ""}>Per Lock</mwc-list-item>
         </ha-select>
-        <ha-textfield
+        <ha-input
           id="la-max"
           class="field"
           label="Max events"
           type="number"
           min="1"
           max="100"
-        ></ha-textfield>
+        ></ha-input>
         <div class="section-title">Locks</div>
         <p class="section-desc">
           Filter activity to specific locks or lock groups. Leave empty to show all.
