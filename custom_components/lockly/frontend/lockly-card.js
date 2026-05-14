@@ -540,6 +540,7 @@ class LocklyCard extends HTMLElement {
     `;
     this._dialog.addEventListener("closed", () => {
       this._editingSlotId = null;
+      this._originalSlot = null;
       this._dialog?.remove();
       this._dialog = null;
     });
@@ -555,15 +556,21 @@ class LocklyCard extends HTMLElement {
     this._dialog
       .querySelector("#lockly-slot-save")
       ?.addEventListener("click", () => this._saveEditor());
+    const nameField = this._dialog.querySelector("#lockly-slot-name");
     const pinField = this._dialog.querySelector("#lockly-slot-pin");
+    const enabledField = this._dialog.querySelector("#lockly-slot-enabled");
+    const refresh = () => this._refreshButtonState();
+    nameField?.addEventListener("input", refresh);
     if (pinField) {
       pinField.addEventListener("input", () => {
         const digits = pinField.value.replace(/\D+/g, "");
         if (pinField.value !== digits) {
           pinField.value = digits;
         }
+        refresh();
       });
     }
+    enabledField?.addEventListener("change", refresh);
   }
 
   _openEditor(slot) {
@@ -572,6 +579,11 @@ class LocklyCard extends HTMLElement {
     }
     this._ensureDialog();
     this._editingSlotId = slot.id;
+    this._originalSlot = {
+      name: slot.name || "",
+      pin: slot.pin || "",
+      enabled: Boolean(slot.enabled),
+    };
     const nameField = this._dialog.querySelector("#lockly-slot-name");
     const pinField = this._dialog.querySelector("#lockly-slot-pin");
     const enabledField = this._dialog.querySelector("#lockly-slot-enabled");
@@ -585,10 +597,48 @@ class LocklyCard extends HTMLElement {
     if (enabledField) {
       enabledField.checked = Boolean(slot.enabled);
     }
+    this._refreshButtonState();
     this._openDialog();
     if (nameField && !nameField.value) {
       requestAnimationFrame(() => nameField.focus?.());
     }
+  }
+
+  _computeFormState() {
+    if (!this._dialog || !this._originalSlot) {
+      return null;
+    }
+    const nameField = this._dialog.querySelector("#lockly-slot-name");
+    const pinField = this._dialog.querySelector("#lockly-slot-pin");
+    const enabledField = this._dialog.querySelector("#lockly-slot-enabled");
+    const cur = {
+      name: nameField?.value ?? "",
+      pin: (pinField?.value ?? "").trim(),
+      enabled: Boolean(enabledField?.checked),
+    };
+    const orig = this._originalSlot;
+    const nameChanged = cur.name !== orig.name;
+    const pinChanged = cur.pin !== orig.pin;
+    const enabledChanged = cur.enabled !== orig.enabled;
+    return {
+      cur,
+      changed: nameChanged || pinChanged || enabledChanged,
+      // Push to the lock when its state will materially differ: the
+      // enabled flag flipped, or the user is rotating a pin on a slot
+      // that is/will be active. Pure name edits and "draft" pin edits
+      // on a disabled slot are HA-side only.
+      shouldApply: enabledChanged || (cur.enabled && pinChanged),
+    };
+  }
+
+  _refreshButtonState() {
+    const state = this._computeFormState();
+    const saveBtn = this._dialog?.querySelector("#lockly-slot-save");
+    if (!state || !saveBtn) {
+      return;
+    }
+    saveBtn.textContent = state.shouldApply ? "Apply" : "Save";
+    saveBtn.disabled = !state.changed;
   }
 
   _openDialog() {
@@ -658,6 +708,8 @@ class LocklyCard extends HTMLElement {
       this._setPinError(pinField, "");
     }
     const enabled = enabledField ? enabledField.checked : false;
+    const formState = this._computeFormState();
+    const shouldApply = formState ? formState.shouldApply : true;
     try {
       await this._hass.callService("lockly", "update_slot", {
         entry_id: this._config.entry_id,
@@ -671,21 +723,23 @@ class LocklyCard extends HTMLElement {
       console.error("Lockly update failed", err);
       return;
     }
-    const applyData = {
-      entry_id: this._config.entry_id,
-      slot: this._editingSlotId,
-      dry_run: Boolean(this._config?.dry_run),
-    };
-    const lockEntities = this._getLockEntityOverrides();
-    if (lockEntities) {
-      applyData.lock_entities = lockEntities;
-    }
-    try {
-      await this._hass.callService("lockly", "apply_slot", applyData);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("Lockly apply failed", err);
-      return;
+    if (shouldApply) {
+      const applyData = {
+        entry_id: this._config.entry_id,
+        slot: this._editingSlotId,
+        dry_run: Boolean(this._config?.dry_run),
+      };
+      const lockEntities = this._getLockEntityOverrides();
+      if (lockEntities) {
+        applyData.lock_entities = lockEntities;
+      }
+      try {
+        await this._hass.callService("lockly", "apply_slot", applyData);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Lockly apply failed", err);
+        return;
+      }
     }
     this._closeDialog();
   }
