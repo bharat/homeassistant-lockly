@@ -327,8 +327,10 @@ class LocklyCard extends HTMLElement {
           font-size: inherit;
           opacity: 0.7;
         }
-        .slot-filter-tabs button:hover {
+        .slot-filter-tabs button:hover,
+        .slot-filter-tabs button:focus-visible {
           opacity: 1;
+          outline: none;
         }
         .slot-filter-tabs button.active {
           color: var(--primary-color);
@@ -349,9 +351,9 @@ class LocklyCard extends HTMLElement {
         </div>
         ${hasDisabledSlots
           ? `<div class="slot-filter-tabs">
-              <button data-filter="all" class="${showDisabled ? "active" : ""}">All</button>
+              <button type="button" data-filter="all" class="${showDisabled ? "active" : ""}">All</button>
               <span class="sep">|</span>
-              <button data-filter="enabled" class="${showDisabled ? "" : "active"}">Enabled only</button>
+              <button type="button" data-filter="enabled" class="${showDisabled ? "" : "active"}">Enabled only</button>
             </div>`
           : ""
         }
@@ -472,13 +474,18 @@ class LocklyCard extends HTMLElement {
       <style>
         .dialog-content {
           display: grid;
-          gap: 20px;
-          padding: 16px 0;
+          gap: 16px;
+          padding: 8px 0;
+        }
+        ha-input {
+          display: block;
         }
         .switch-row {
           display: flex;
-          align-items: center;
-          justify-content: space-between;
+          justify-content: flex-end;
+        }
+        .switch-row ha-formfield {
+          --mdc-typography-body2-font-size: 1rem;
         }
         .dialog-footer {
           display: flex;
@@ -502,18 +509,22 @@ class LocklyCard extends HTMLElement {
         }
       </style>
       <div class="dialog-content">
-        <ha-textfield id="lockly-slot-name" label="Name"></ha-textfield>
-        <ha-textfield
+        <ha-input
+          id="lockly-slot-name"
+          label="Name"
+          autocomplete="off"
+        ></ha-input>
+        <ha-input
           id="lockly-slot-pin"
           label="PIN"
-          type="text"
           inputmode="numeric"
-          pattern="[0-9]*"
           maxlength="8"
-        ></ha-textfield>
+          autocomplete="off"
+        ></ha-input>
         <div class="switch-row">
-          <span>Enabled</span>
-          <ha-switch id="lockly-slot-enabled"></ha-switch>
+          <ha-formfield label="Enabled">
+            <ha-switch id="lockly-slot-enabled"></ha-switch>
+          </ha-formfield>
         </div>
       </div>
       <div slot="footer" class="dialog-footer">
@@ -529,6 +540,8 @@ class LocklyCard extends HTMLElement {
     `;
     this._dialog.addEventListener("closed", () => {
       this._editingSlotId = null;
+      this._dialog?.remove();
+      this._dialog = null;
     });
     document.body.appendChild(this._dialog);
     this._dialog
@@ -542,6 +555,15 @@ class LocklyCard extends HTMLElement {
     this._dialog
       .querySelector("#lockly-slot-save")
       ?.addEventListener("click", () => this._saveEditor());
+    const pinField = this._dialog.querySelector("#lockly-slot-pin");
+    if (pinField) {
+      pinField.addEventListener("input", () => {
+        const digits = pinField.value.replace(/\D+/g, "");
+        if (pinField.value !== digits) {
+          pinField.value = digits;
+        }
+      });
+    }
   }
 
   _openEditor(slot) {
@@ -791,17 +813,6 @@ class LocklyCardEditor extends HTMLElement {
     }
   }
 
-  _handleEntryChange(ev) {
-    const entryId = ev.detail?.value ?? ev.target?.value ?? "";
-    if (!entryId || entryId === this._config?.entry_id) {
-      return;
-    }
-    this._config = { ...this._config, entry_id: entryId };
-    this._emitConfigChanged();
-  }
-
-
-
   _handleTitleChange(ev) {
     const title = ev.target?.value ?? "";
     this._config = { ...this._config, title };
@@ -846,18 +857,19 @@ class LocklyCardEditor extends HTMLElement {
     const entrySelect =
       entries.length > 1
         ? `
-          <ha-select class="field" label="Lockly instance">
-            ${entries
-          .map((entry) => {
-            const label = entry.title || entry.entry_id;
-            const isSelected = entry.entry_id === selected ? "selected" : "";
-            return `<mwc-list-item value="${entry.entry_id}" ${isSelected}>
-                    ${label}
-                  </mwc-list-item>`;
-          })
-          .join("")}
-          </ha-select>
-          <p class="section-desc">Select which Lockly instance to use.</p>
+          <label class="field field-stack">
+            <span class="field-label">Lockly instance</span>
+            <select id="lockly-entry-select" class="native-select">
+              ${selected ? "" : `<option value="" selected disabled>Select an instance…</option>`}
+              ${entries
+                .map((entry) => {
+                  const label = entry.title || entry.entry_id;
+                  const isSelected = entry.entry_id === selected ? "selected" : "";
+                  return `<option value="${entry.entry_id}" ${isSelected}>${label}</option>`;
+                })
+                .join("")}
+            </select>
+          </label>
         `
         : "";
     this.innerHTML = `
@@ -877,6 +889,30 @@ class LocklyCardEditor extends HTMLElement {
           color: var(--secondary-text-color);
           margin: 0 0 16px 0;
         }
+        .field-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 8px;
+        }
+        .field-label {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+        .native-select {
+          font: inherit;
+          font-size: 16px;
+          padding: 10px 12px;
+          border: 1px solid var(--divider-color, rgba(0,0,0,0.12));
+          border-radius: 4px;
+          background: var(--card-background-color, var(--primary-background-color));
+          color: var(--primary-text-color);
+          outline: none;
+          width: 100%;
+        }
+        .native-select:focus {
+          border-color: var(--primary-color);
+        }
         .toggle-stack {
           display: flex;
           flex-direction: column;
@@ -893,7 +929,7 @@ class LocklyCardEditor extends HTMLElement {
         }
       </style>
       <div class="container">
-        <ha-textfield id="lockly-title" class="field" label="Title (optional)"></ha-textfield>
+        <ha-input id="lockly-title" class="field" label="Title (optional)"></ha-input>
         ${entrySelect}
         <div class="toggle-stack">
           <ha-formfield label="Only admins can see PINs and edit">
@@ -906,12 +942,12 @@ class LocklyCardEditor extends HTMLElement {
             <ha-switch id="lockly-show-bulk-actions"></ha-switch>
           </ha-formfield>
         </div>
-        <ha-textfield
+        <ha-input
           class="field"
           label="Additional admin users (comma separated)"
           id="lockly-admin-users"
           helper-text="Enter user IDs or display names (e.g., user_123, Bettina)."
-        ></ha-textfield>
+        ></ha-input>
         <div class="section-title">Locks</div>
         <p class="section-desc">
           Add locks or lock groups that this card will manage.
@@ -934,16 +970,18 @@ class LocklyCardEditor extends HTMLElement {
         this._handleAdminUsersChange(ev)
       );
     }
-    const select = this.querySelector("ha-select");
+    const select = this.querySelector("#lockly-entry-select");
     if (select) {
       if (selected) {
         select.value = selected;
       }
-      select.addEventListener("value-changed", (ev) =>
-        this._handleEntryChange(ev)
-      );
-      select.addEventListener("selected", (ev) => this._handleEntryChange(ev));
-      select.addEventListener("change", (ev) => this._handleEntryChange(ev));
+      select.addEventListener("change", (ev) => {
+        const val = ev.target?.value ?? "";
+        if (val) {
+          this._config = { ...this._config, entry_id: val };
+          this._emitConfigChanged();
+        }
+      });
     }
     const adminSwitch = this.querySelector("#lockly-admin-only");
     if (adminSwitch) {
