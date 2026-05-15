@@ -162,21 +162,25 @@ class LocklyCard extends HTMLElement {
       : this._getDefaultTitle() || DEFAULT_TITLE;
     const adminOnly = Boolean(this._config?.admin_only);
     const isAdmin = Boolean(this._hass?.user?.is_admin);
-    const extraAdminTokens = new Set(
-      extraAdminUsers
-        .map((value) => String(value || "").trim().toLowerCase())
-        .filter(Boolean)
-    );
-    const userId = String(this._hass?.user?.id || "").toLowerCase();
-    const userName = String(this._hass?.user?.name || "").toLowerCase();
-    const userNameParts = userName
-      .split(/\\s+/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    const isExtraAdmin =
-      (userId && extraAdminTokens.has(userId)) ||
-      (userName && extraAdminTokens.has(userName)) ||
-      userNameParts.some((part) => extraAdminTokens.has(part));
+    // admin_users supports two formats so old configs keep working:
+    //   - person entity IDs (the picker writes these now)
+    //   - raw HA user IDs (the pre-picker format; resolved as-is)
+    // Mixed lists are fine; both resolve to a set of user IDs to check.
+    const extraAdminUserIds = new Set();
+    for (const value of extraAdminUsers) {
+      const str = String(value || "");
+      if (!str) continue;
+      if (str.startsWith("person.")) {
+        const linked = this._hass?.states?.[str]?.attributes?.user_id;
+        if (linked) {
+          extraAdminUserIds.add(String(linked));
+        }
+      } else {
+        extraAdminUserIds.add(str);
+      }
+    }
+    const userId = String(this._hass?.user?.id || "");
+    const isExtraAdmin = Boolean(userId) && extraAdminUserIds.has(userId);
     const canEdit = !adminOnly || isAdmin || isExtraAdmin;
     this._canEdit = canEdit;
     const showBulkActions = this._config?.show_bulk_actions !== false;
@@ -873,16 +877,6 @@ class LocklyCardEditor extends HTMLElement {
     this._emitConfigChanged();
   }
 
-  _handleAdminUsersChange(ev) {
-    const value = ev.target?.value ?? "";
-    const users = value
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    this._config = { ...this._config, admin_users: users };
-    this._emitConfigChanged();
-  }
-
   _emitConfigChanged() {
     this.dispatchEvent(
       new CustomEvent("config-changed", {
@@ -926,6 +920,7 @@ class LocklyCardEditor extends HTMLElement {
           </label>
         `
         : "";
+    const activeTab = this._activeTab || "locks";
     this.innerHTML = `
       <style>
         .container {
@@ -934,10 +929,6 @@ class LocklyCardEditor extends HTMLElement {
         .field {
           margin-bottom: 16px;
           width: 100%;
-        }
-        .section-title {
-          font-weight: 600;
-          margin: 8px 0 8px;
         }
         .section-desc {
           color: var(--secondary-text-color);
@@ -967,11 +958,47 @@ class LocklyCardEditor extends HTMLElement {
         .native-select:focus {
           border-color: var(--primary-color);
         }
+        .tab-bar {
+          display: flex;
+          border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.12));
+          margin-bottom: 16px;
+        }
+        .tab-bar button {
+          flex: 1;
+          cursor: pointer;
+          border: none;
+          background: none;
+          padding: 12px 8px;
+          color: var(--secondary-text-color);
+          font: inherit;
+          font-weight: 500;
+          border-bottom: 2px solid transparent;
+          margin-bottom: -1px;
+        }
+        .tab-bar button:hover,
+        .tab-bar button:focus-visible {
+          color: var(--primary-text-color);
+          outline: none;
+        }
+        .tab-bar button.active {
+          color: var(--primary-color);
+          border-bottom-color: var(--primary-color);
+        }
+        .tab-content[hidden] {
+          display: none;
+        }
+        .admin-warning {
+          margin-top: 12px;
+          padding: 8px 12px;
+          background: var(--warning-color, #ff9800);
+          color: var(--text-primary-color, #fff);
+          border-radius: 4px;
+          font-size: 0.9rem;
+        }
         .toggle-stack {
           display: flex;
           flex-direction: column;
           gap: 12px;
-          margin-bottom: 24px;
         }
         .toggle-stack ha-formfield {
           display: flex;
@@ -985,28 +1012,37 @@ class LocklyCardEditor extends HTMLElement {
       <div class="container">
         <ha-input id="lockly-title" class="field" label="Title (optional)"></ha-input>
         ${entrySelect}
-        <div class="toggle-stack">
-          <ha-formfield label="Only admins can see PINs and edit">
-            <ha-switch id="lockly-admin-only"></ha-switch>
-          </ha-formfield>
-          <ha-formfield label="Simulation mode (no MQTT)">
-            <ha-switch id="lockly-dry-run"></ha-switch>
-          </ha-formfield>
-          <ha-formfield label="Show Apply all button">
-            <ha-switch id="lockly-show-bulk-actions"></ha-switch>
-          </ha-formfield>
+        <div class="tab-bar" role="tablist">
+          <button type="button" role="tab" data-tab="locks" class="${activeTab === "locks" ? "active" : ""}">Locks</button>
+          <button type="button" role="tab" data-tab="settings" class="${activeTab === "settings" ? "active" : ""}">Settings</button>
+          <button type="button" role="tab" data-tab="admins" class="${activeTab === "admins" ? "active" : ""}">Admins</button>
         </div>
-        <ha-input
-          class="field"
-          label="Additional admin users (comma separated)"
-          id="lockly-admin-users"
-          helper-text="Enter user IDs or display names (e.g., user_123, Bettina)."
-        ></ha-input>
-        <div class="section-title">Locks</div>
-        <p class="section-desc">
-          Add locks or lock groups that this card will manage.
-        </p>
-        <ha-form id="lockly-entities-form"></ha-form>
+        <div class="tab-content" data-tab="locks" ${activeTab === "locks" ? "" : "hidden"}>
+          <p class="section-desc">
+            Locks or lock groups managed by this card.
+          </p>
+          <ha-form id="lockly-entities-form"></ha-form>
+        </div>
+        <div class="tab-content" data-tab="settings" ${activeTab === "settings" ? "" : "hidden"}>
+          <div class="toggle-stack">
+            <ha-formfield label="Only admins can see PINs and edit">
+              <ha-switch id="lockly-admin-only"></ha-switch>
+            </ha-formfield>
+            <ha-formfield label="Simulation mode (no MQTT)">
+              <ha-switch id="lockly-dry-run"></ha-switch>
+            </ha-formfield>
+            <ha-formfield label="Show Apply all button">
+              <ha-switch id="lockly-show-bulk-actions"></ha-switch>
+            </ha-formfield>
+          </div>
+        </div>
+        <div class="tab-content" data-tab="admins" ${activeTab === "admins" ? "" : "hidden"}>
+          <p class="section-desc">
+            Non-admin users who can see PINs and edit slots. Pick the person entity for each user.
+          </p>
+          <ha-form id="lockly-admin-users-form"></ha-form>
+          <p class="admin-warning" id="lockly-admin-legacy-warning" hidden></p>
+        </div>
       </div>
     `;
     const titleField = this.querySelector("#lockly-title");
@@ -1014,16 +1050,87 @@ class LocklyCardEditor extends HTMLElement {
       titleField.value = title;
       titleField.addEventListener("change", (ev) => this._handleTitleChange(ev));
     }
-    const adminUsersField = this.querySelector("#lockly-admin-users");
-    if (adminUsersField) {
+    const adminUsersForm = this.querySelector("#lockly-admin-users-form");
+    if (adminUsersForm) {
       const adminUsers = Array.isArray(this._config?.admin_users)
         ? this._config.admin_users
         : [];
-      adminUsersField.value = adminUsers.join(", ");
-      adminUsersField.addEventListener("change", (ev) =>
-        this._handleAdminUsersChange(ev)
-      );
+      // Split admin_users into picker-friendly entries (person entity IDs)
+      // and "legacy" entries (raw user IDs with no linked person on this
+      // install). Picker only edits the former; the latter are carried
+      // through saves unchanged so we don't lose data, with a warning
+      // surfaced so the user knows they exist.
+      const states = this._hass?.states || {};
+      const pickerValue = [];
+      const legacyEntries = [];
+      for (const value of adminUsers) {
+        const str = String(value || "");
+        if (!str) continue;
+        if (str.startsWith("person.")) {
+          pickerValue.push(str);
+          continue;
+        }
+        let resolved = null;
+        for (const stateId in states) {
+          if (
+            stateId.startsWith("person.") &&
+            states[stateId]?.attributes?.user_id === str
+          ) {
+            resolved = stateId;
+            break;
+          }
+        }
+        if (resolved) {
+          pickerValue.push(resolved);
+        } else {
+          legacyEntries.push(str);
+        }
+      }
+      const warning = this.querySelector("#lockly-admin-legacy-warning");
+      if (warning) {
+        if (legacyEntries.length) {
+          warning.hidden = false;
+          warning.textContent = `${legacyEntries.length} legacy user ID${legacyEntries.length === 1 ? "" : "s"} kept as-is (no linked person on this install). Create a Person and link it to migrate via the picker.`;
+        } else {
+          warning.hidden = true;
+        }
+      }
+      adminUsersForm.hass = this._hass;
+      adminUsersForm.schema = [
+        {
+          name: "admin_users",
+          selector: { entity: { multiple: true, domain: "person" } },
+        },
+      ];
+      adminUsersForm.data = { admin_users: pickerValue };
+      adminUsersForm.computeLabel = () => "Users";
+      adminUsersForm.addEventListener("value-changed", (ev) => {
+        const value = ev.detail?.value || {};
+        const fromPicker = Array.isArray(value.admin_users)
+          ? value.admin_users
+          : [];
+        this._config = {
+          ...this._config,
+          admin_users: [...fromPicker, ...legacyEntries],
+        };
+        this._emitConfigChanged();
+      });
     }
+    this.querySelectorAll(".tab-bar button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.getAttribute("data-tab");
+        if (!tab || tab === this._activeTab) {
+          return;
+        }
+        this._activeTab = tab;
+        this.querySelectorAll(".tab-bar button").forEach((b) => {
+          b.classList.toggle("active", b.getAttribute("data-tab") === tab);
+        });
+        this.querySelectorAll(".tab-content").forEach((c) => {
+          c.hidden = c.getAttribute("data-tab") !== tab;
+        });
+      });
+    });
     const select = this.querySelector("#lockly-entry-select");
     if (select) {
       if (selected) {
