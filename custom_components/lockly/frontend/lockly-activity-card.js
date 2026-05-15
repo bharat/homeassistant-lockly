@@ -570,22 +570,49 @@ class LocklyActivityCardEditor extends HTMLElement {
 
     const entrySelect =
       entries.length > 1
-        ? `<ha-select id="la-entry" class="field" label="Lockly instance">
-            ${entries
-              .map((entry) => {
-                const label = entry.title || entry.entry_id;
-                const isSelected =
-                  entry.entry_id === selected ? "selected" : "";
-                return `<mwc-list-item value="${entry.entry_id}" ${isSelected}>${label}</mwc-list-item>`;
-              })
-              .join("")}
-          </ha-select>`
+        ? `<label class="field field-stack">
+            <span class="field-label">Lockly instance</span>
+            <select id="la-entry" class="native-select">
+              ${selected ? "" : `<option value="" selected disabled>Select an instance…</option>`}
+              ${entries
+                .map((entry) => {
+                  const label = entry.title || entry.entry_id;
+                  const isSelected =
+                    entry.entry_id === selected ? "selected" : "";
+                  return `<option value="${entry.entry_id}" ${isSelected}>${label}</option>`;
+                })
+                .join("")}
+            </select>
+          </label>`
         : "";
 
     this.innerHTML = `
       <style>
         .container { padding: 16px; }
         .field { margin-bottom: 16px; width: 100%; }
+        .field-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .field-label {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+        .native-select {
+          font: inherit;
+          font-size: 16px;
+          padding: 10px 12px;
+          border: 1px solid var(--divider-color, rgba(0,0,0,0.12));
+          border-radius: 4px;
+          background: var(--card-background-color, var(--primary-background-color));
+          color: var(--primary-text-color);
+          outline: none;
+          width: 100%;
+        }
+        .native-select:focus {
+          border-color: var(--primary-color);
+        }
         .section-title {
           font-weight: 600;
           margin: 16px 0 8px;
@@ -601,10 +628,13 @@ class LocklyActivityCardEditor extends HTMLElement {
         <div class="section-title">General</div>
         <ha-input id="la-title" class="field" label="Title"></ha-input>
         ${entrySelect}
-        <ha-select id="la-view" class="field" label="Default view">
-          <mwc-list-item value="recent" ${view === "recent" ? "selected" : ""}>Recent Activity</mwc-list-item>
-          <mwc-list-item value="per_lock" ${view === "per_lock" ? "selected" : ""}>Per Lock</mwc-list-item>
-        </ha-select>
+        <label class="field field-stack">
+          <span class="field-label">Default view</span>
+          <select id="la-view" class="native-select">
+            <option value="recent" ${view === "recent" ? "selected" : ""}>Recent Activity</option>
+            <option value="per_lock" ${view === "per_lock" ? "selected" : ""}>Per Lock</option>
+          </select>
+        </label>
         <ha-input
           id="la-max"
           class="field"
