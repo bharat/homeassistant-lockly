@@ -30,8 +30,7 @@ and safe.
           src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-integration-entries.png"
           alt="Lockly integration entries"
           width="480"
-          height="480"
-          style="object-fit: cover; border: 2px solid #000;"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
         />
       </a>
     </td>
@@ -48,43 +47,59 @@ and safe.
           src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-multi.png"
           alt="Multiple Lockly cards"
           width="480"
-          height="480"
-          style="object-fit: cover; border: 2px solid #000;"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
         />
       </a>
     </td>
   </tr>
   <tr>
     <td width="40%">
-      <strong>Configure with confidence</strong><br />
-      Pick the Lockly instance, control admin-only access, and enable simulation
-      mode to test without sending MQTT updates.
+      <strong>Pick the locks each card manages</strong><br />
+      The card configuration dialog opens on a Locks tab where you select
+      individual locks or whole groups directly from the Lovelace editor, with
+      a live preview alongside.
     </td>
     <td width="60%">
-      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-configuration.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-config-locks.png">
         <img
-          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-configuration.png"
-          alt="Lockly card configuration"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-config-locks.png"
+          alt="Card configuration — Locks tab"
           width="480"
-          height="480"
-          style="object-fit: cover; border: 2px solid #000;"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
         />
       </a>
     </td>
   </tr>
   <tr>
     <td width="40%">
-      <strong>Select locks and groups visually</strong><br />
-      Add individual locks or whole groups directly from the Lovelace editor.
+      <strong>Tweak behavior in Settings</strong><br />
+      Hide PINs from non-admins, run in simulation mode without touching MQTT,
+      and toggle the Apply all button on or off.
     </td>
     <td width="60%">
-      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-entity-picker.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-config-settings.png">
         <img
-          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-entity-picker.png"
-          alt="Lockly card entity picker"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-config-settings.png"
+          alt="Card configuration — Settings tab"
           width="480"
-          height="480"
-          style="object-fit: cover; border: 2px solid #000;"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="40%">
+      <strong>Grant access to specific people</strong><br />
+      The Admins tab lets you pick which non-admin Home Assistant users can see
+      PINs and edit slots — by picking their person entity, not by typing IDs.
+    </td>
+    <td width="60%">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-config-admins.png">
+        <img
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-config-admins.png"
+          alt="Card configuration — Admins tab"
+          width="480"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
         />
       </a>
     </td>
@@ -93,7 +108,9 @@ and safe.
     <td width="40%">
       <strong>Fast slot edits with validation</strong><br />
       Update a slot name, PIN, or enabled state with clear, inline error
-      feedback before applying changes.
+      feedback before applying changes. The action button reads <em>Save</em>
+      for local-only edits and <em>Apply</em> when the change will reach the
+      lock.
     </td>
     <td width="60%">
       <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png">
@@ -101,8 +118,7 @@ and safe.
           src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png"
           alt="Edit slot dialog"
           width="480"
-          height="480"
-          style="object-fit: cover; border: 2px solid #000;"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
         />
       </a>
     </td>
@@ -122,8 +138,7 @@ and safe.
           src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-activity-card.png"
           alt="Lockly activity card"
           width="480"
-          height="480"
-          style="object-fit: cover; border: 2px solid #000;"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
         />
       </a>
     </td>
@@ -151,7 +166,7 @@ and safe.
 ## Installation (HACS)
 
 This integration is available directly in HACS under the Integration category.
-Requires Home Assistant 2026.3.1 or newer.
+Requires Home Assistant 2026.4.0 or newer (the card uses `ha-input`, introduced in 2026.4).
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bharat&repository=homeassistant-lockly)
 
@@ -180,8 +195,7 @@ usual way from the dashboard UI.
     src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-add-to-dashboard.png"
     alt="Add Lockly card to dashboard"
     width="480"
-    height="480"
-    style="object-fit: cover; border: 2px solid #000;"
+    style="max-width: 100%; height: auto; border: 2px solid #000;"
   />
 </a>
 
