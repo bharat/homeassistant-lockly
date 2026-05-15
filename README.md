@@ -8,12 +8,9 @@
 [![Lint](https://github.com/bharat/homeassistant-lockly/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/bharat/homeassistant-lockly/actions/workflows/lint.yml)
 [![Release](https://img.shields.io/github/v/release/bharat/homeassistant-lockly?sort=semver)](https://github.com/bharat/homeassistant-lockly/releases)
 
-Lockly is a custom Home Assistant integration and Lovelace card that delivers a
-user-friendly lock management experience for compatible Zigbee2MQTT locks. It
-keeps your household access in one place with an easy, reliable, fast, and
-ergonomic workflow for managing PIN slots. From quick edits to bulk updates,
-Lockly stays focused on the small details that make access changes feel simple
-and safe.
+Lockly is a Home Assistant integration and Lovelace card for managing PIN
+slots on Zigbee2MQTT smart locks. Keep household access in one place: edit a
+slot, push changes to one lock or many, and see who came in.
 
 ## Screenshots and Features
 
@@ -57,11 +54,10 @@ and safe.
   </tr>
   <tr>
     <td width="40%">
-      <strong>Fast slot edits with validation</strong><br />
-      Update a slot name, PIN, or enabled state with clear, inline error
-      feedback before applying changes. The action button reads <em>Save</em>
-      for local-only edits and <em>Apply</em> when the change will reach the
-      lock.
+      <strong>Edit slots in a focused dialog</strong><br />
+      Update a slot's name, PIN, or enabled state with inline validation as
+      you type. The action button knows when a change is local only and when
+      it needs to reach the lock, and labels itself accordingly.
     </td>
     <td width="60%">
       <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png">
@@ -112,8 +108,8 @@ and safe.
   <tr>
     <td width="40%">
       <strong>Grant access to specific people</strong><br />
-      The Admins tab lets you pick which non-admin Home Assistant users can see
-      PINs and edit slots — by picking their person entity, not by typing IDs.
+      The Admins tab lets non-admin Home Assistant users see PINs and edit
+      slots. Pick them from your list of people.
     </td>
     <td width="60%">
       <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-config-admins.png">
@@ -166,7 +162,7 @@ and safe.
 ## Installation (HACS)
 
 This integration is available directly in HACS under the Integration category.
-Requires Home Assistant 2026.4.0 or newer (the card uses `ha-input`, introduced in 2026.4).
+Requires Home Assistant 2026.4.0 or newer.
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bharat&repository=homeassistant-lockly)
 
@@ -211,7 +207,7 @@ lock_entities:
 admin_only: true
 dry_run: true
 admin_users:
-  - your_user_id
+  - person.alice
 ```
 
 To find the entry ID, open the Lockly integration in Settings > Devices & Services
@@ -243,10 +239,11 @@ max_events: 5
 
 ### Slot Management Card
 
-In the visual editor, add the locks or lock groups that this card should manage.
-Enable "Only admins can see PINs and edit" to restrict edits and PIN visibility.
-Use "Additional admin users" to allow specific IDs or display names without promoting them to HA admin.
-Enable "Simulation mode (no MQTT)" to test the UI without touching locks.
+The card editor opens on a Locks tab where you pick which locks or lock groups
+this card manages. The Settings tab holds three toggles: hide PINs from
+non-admins, run in simulation mode (no MQTT), and show or hide the Apply all
+button. The Admins tab lets specific Home Assistant users see PINs and edit
+slots without granting them HA admin — pick them from your list of people.
 
 ## How it works
 
