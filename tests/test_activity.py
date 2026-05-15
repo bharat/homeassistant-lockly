@@ -10,6 +10,8 @@ import pytest
 from custom_components.lockly.activity import ActivityBuffer, dedup_events
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from homeassistant.core import HomeAssistant
 
 
@@ -21,8 +23,12 @@ def store() -> AsyncMock:
 
 
 @pytest.fixture
-def buf(hass: HomeAssistant, store: AsyncMock) -> ActivityBuffer:
-    return ActivityBuffer(hass, store)
+async def buf(hass: HomeAssistant, store: AsyncMock) -> AsyncIterator[ActivityBuffer]:
+    buffer = ActivityBuffer(hass, store)
+    try:
+        yield buffer
+    finally:
+        await buffer.async_stop()
 
 
 @pytest.mark.asyncio
@@ -75,10 +81,13 @@ async def test_load_empty_store(buf: ActivityBuffer, store: AsyncMock) -> None:
 @pytest.mark.asyncio
 async def test_no_store(hass: HomeAssistant) -> None:
     buf = ActivityBuffer(hass, store=None)
-    buf.append({"lock": "Test"}, "lock")
-    assert len(buf.recent()) == 1
-    await buf.async_load()
-    assert len(buf.recent()) == 1
+    try:
+        buf.append({"lock": "Test"}, "lock")
+        assert len(buf.recent()) == 1
+        await buf.async_load()
+        assert len(buf.recent()) == 1
+    finally:
+        await buf.async_stop()
 
 
 @pytest.mark.asyncio

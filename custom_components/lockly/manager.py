@@ -705,6 +705,8 @@ class LocklyManager:
             if handle is not None:
                 handle.cancel()
         self._pending_actions.clear()
+        if self._activity is not None:
+            await self._activity.async_stop()
 
     async def _enqueue_publish(
         self, lock_name: str, slot_id: int, payload: dict
