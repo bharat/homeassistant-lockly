@@ -20,23 +20,6 @@ and safe.
 <table>
   <tr>
     <td width="40%">
-      <strong>Manage multiple configurations</strong><br />
-      Run separate Lockly entries for different homes, buildings, or lock groups,
-      each with its own slots and MQTT settings.
-    </td>
-    <td width="60%">
-      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-integration-entries.png">
-        <img
-          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-integration-entries.png"
-          alt="Lockly integration entries"
-          width="480"
-          style="max-width: 100%; height: auto; border: 2px solid #000;"
-        />
-      </a>
-    </td>
-  </tr>
-  <tr>
-    <td width="40%">
       <strong>See slot status at a glance</strong><br />
       Color-coded rows show enabled vs. disabled slots plus queued/updating
       states during bulk operations.
@@ -46,6 +29,45 @@ and safe.
         <img
           src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-card-multi.png"
           alt="Multiple Lockly cards"
+          width="480"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="40%">
+      <strong>See who unlocked your doors</strong><br />
+      The Lock Activity card shows recent lock events across all your managed
+      locks — who unlocked, how, and when. Redundant events (firmware echoes,
+      duplicate automation commands) are automatically collapsed. Toggle between
+      a chronological feed and a per-lock summary that highlights the last
+      identified user. Click any entry to jump to that lock's history.
+    </td>
+    <td width="60%">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-activity-card.png">
+        <img
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-activity-card.png"
+          alt="Lockly activity card"
+          width="480"
+          style="max-width: 100%; height: auto; border: 2px solid #000;"
+        />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="40%">
+      <strong>Fast slot edits with validation</strong><br />
+      Update a slot name, PIN, or enabled state with clear, inline error
+      feedback before applying changes. The action button reads <em>Save</em>
+      for local-only edits and <em>Apply</em> when the change will reach the
+      lock.
+    </td>
+    <td width="60%">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png">
+        <img
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png"
+          alt="Edit slot dialog"
           width="480"
           style="max-width: 100%; height: auto; border: 2px solid #000;"
         />
@@ -106,37 +128,15 @@ and safe.
   </tr>
   <tr>
     <td width="40%">
-      <strong>Fast slot edits with validation</strong><br />
-      Update a slot name, PIN, or enabled state with clear, inline error
-      feedback before applying changes. The action button reads <em>Save</em>
-      for local-only edits and <em>Apply</em> when the change will reach the
-      lock.
+      <strong>Manage multiple configurations</strong><br />
+      Run separate Lockly entries for different homes, buildings, or lock groups,
+      each with its own slots and MQTT settings.
     </td>
     <td width="60%">
-      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png">
+      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-integration-entries.png">
         <img
-          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-edit-slot-dialog.png"
-          alt="Edit slot dialog"
-          width="480"
-          style="max-width: 100%; height: auto; border: 2px solid #000;"
-        />
-      </a>
-    </td>
-  </tr>
-  <tr>
-    <td width="40%">
-      <strong>See who unlocked your doors</strong><br />
-      The Lock Activity card shows recent lock events across all your managed
-      locks — who unlocked, how, and when. Redundant events (firmware echoes,
-      duplicate automation commands) are automatically collapsed. Toggle between
-      a chronological feed and a per-lock summary that highlights the last
-      identified user. Click any entry to jump to that lock's history.
-    </td>
-    <td width="60%">
-      <a href="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-activity-card.png">
-        <img
-          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-activity-card.png"
-          alt="Lockly activity card"
+          src="https://raw.githubusercontent.com/bharat/homeassistant-lockly/main/assets/lockly-integration-entries.png"
+          alt="Lockly integration entries"
           width="480"
           style="max-width: 100%; height: auto; border: 2px solid #000;"
         />
