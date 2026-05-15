@@ -211,3 +211,18 @@ class ActivityBuffer:
         if self._save_unsub is not None:
             return
         self._save_unsub = async_call_later(self._hass, 1, self._async_save)
+
+    async def async_stop(self) -> None:
+        """Cancel the pending debounced save and flush once if dirty.
+
+        Without this hook the ``async_call_later`` timer from
+        ``_schedule_save`` survives past test/integration teardown, which
+        HA's stricter ``verify_cleanup`` (2026.5.x +
+        pytest-homeassistant-custom-component 0.13.330) reports as a
+        lingering job. Flushing on stop also means any final events that
+        landed in the debounce window are persisted instead of dropped.
+        """
+        if self._save_unsub is not None:
+            self._save_unsub()
+            self._save_unsub = None
+            await self._async_save()
