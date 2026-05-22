@@ -15,6 +15,28 @@ const BANNER_STYLE = [
 // eslint-disable-next-line no-console
 console.info(`%c Lockly Card ${CARD_VERSION} loaded`, BANNER_STYLE);
 
+// localStorage may throw in private browsing or when over quota; the card
+// must not break in either case, so reads return null and writes are silent.
+function readPref(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
+
+function writePref(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function showDisabledPrefKey(entryId) {
+  return `lockly:lockly-card:${entryId || "default"}:showDisabled`;
+}
+
 class LocklyCard extends HTMLElement {
   setConfig(config) {
     this._config = { ...config };
@@ -22,7 +44,11 @@ class LocklyCard extends HTMLElement {
       this._config = { ...this._config, show_bulk_actions: true };
     }
     if (this._showDisabled === undefined) {
-      this._showDisabled = true;
+      const stored = readPref(showDisabledPrefKey(this._config.entry_id));
+      // Two valid strings: "all" (show every slot) and "enabled" (hide
+      // disabled). Anything else (including null) falls back to the default
+      // of true, which matches the pre-persistence behavior.
+      this._showDisabled = stored === "enabled" ? false : true;
     }
     if (!this._card) {
       this._card = document.createElement("ha-card");
@@ -431,6 +457,10 @@ class LocklyCard extends HTMLElement {
           return;
         }
         this._showDisabled = showDisabled;
+        writePref(
+          showDisabledPrefKey(this._config?.entry_id),
+          showDisabled ? "all" : "enabled"
+        );
         this._render();
       });
     });

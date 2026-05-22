@@ -13,6 +13,28 @@ const BANNER_STYLE = [
 // eslint-disable-next-line no-console
 console.info(`%c Lockly Activity Card ${CARD_VERSION} loaded`, BANNER_STYLE);
 
+// localStorage may throw in private browsing or when over quota; the card
+// must not break in either case, so reads return null and writes are silent.
+function readPref(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
+
+function writePref(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function viewPrefKey(entryId) {
+  return `lockly:lockly-activity-card:${entryId || "default"}:view`;
+}
+
 const ACTION_ICONS = {
   unlock: "mdi:lock-open",
   lock: "mdi:lock",
@@ -94,6 +116,13 @@ function escapeHtml(str) {
 class LocklyActivityCard extends HTMLElement {
   setConfig(config) {
     this._config = { view: "recent", max_events: 5, lock_entities: [], ...config };
+    // The user's last in-UI choice on this browser wins over the YAML
+    // default; if they have never toggled, the YAML value (or the built-in
+    // "recent" default) is used.
+    const stored = readPref(viewPrefKey(this._config.entry_id));
+    if (stored === "recent" || stored === "per_lock") {
+      this._config.view = stored;
+    }
     if (!this._card) {
       this._card = document.createElement("ha-card");
       this.appendChild(this._card);
@@ -370,6 +399,7 @@ class LocklyActivityCard extends HTMLElement {
         const view = btn.getAttribute("data-view");
         if (view && view !== this._config.view) {
           this._config = { ...this._config, view };
+          writePref(viewPrefKey(this._config.entry_id), view);
           this._render();
         }
       });
