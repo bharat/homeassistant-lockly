@@ -11,6 +11,8 @@ sudo npm install -g concurrently
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo BINDIR=/usr/local/bin bash
 pre-commit install
 
+curl -fsSL https://claude.ai/install.sh | bash
+
 # Disable xterm focus-reporting on shell startup. Some TUIs (notably tmux on
 # the host) leave it enabled, leaking ^[[O / ^[[I sequences into the prompt
 # on focus changes. Idempotent — only appends if not already present.
