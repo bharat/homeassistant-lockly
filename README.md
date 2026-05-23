@@ -217,8 +217,9 @@ and copy the entry ID shown in the options dialog.
 
 The Lock Activity card shows recent lock events — who unlocked, the method, and
 when. It supports two views: **Recent** (chronological) and **Per Lock** (latest
-event per lock with the last identified unlocker). Activity survives HA restarts
-and also appears as rich entries in the built-in logbook.
+event per lock with the last identified unlocker). Whichever view you pick from
+the in-card toggle sticks per browser across reloads. Activity survives HA
+restarts and also appears as rich entries in the built-in logbook.
 
 Events are stored raw and deduplicated at display time, so no data is lost:
 
@@ -243,7 +244,8 @@ The card editor opens on a Locks tab where you pick which locks or lock groups
 this card manages. The Settings tab holds three toggles: hide PINs from
 non-admins, run in simulation mode (no MQTT), and show or hide the Apply all
 button. The Admins tab lets specific Home Assistant users see PINs and edit
-slots without granting them HA admin — pick them from your list of people.
+slots without granting them HA admin — pick them from your list of people. The
+in-card "All vs Enabled only" filter is remembered per browser across reloads.
 
 ## How it works
 
@@ -300,3 +302,7 @@ To move data between environments, export slots from one instance and import the
 
 Use `include_pins: true` when exporting if you want PINs included. The import
 will overwrite slots by default; set `replace: false` to merge instead.
+
+## Credits
+
+- The per-browser persistence pattern used by the slot card's "All vs Enabled only" filter and the activity card's "Recent vs Per Lock" view follows the model established by [Alia5/lovelace-expander-card](https://github.com/Alia5/lovelace-expander-card), which uses `localStorage` to remember its expanded/collapsed state across reloads. Thanks to Alia5 for the clean pattern.
