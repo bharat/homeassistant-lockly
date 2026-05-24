@@ -479,8 +479,10 @@ class LocklyActivityCard extends HTMLElement {
           const unlockTitle = lastUnlock.timestamp
             ? absoluteTime(lastUnlock.timestamp)
             : "";
+          // Keep "(<time>)" inside one element so the surrounding flex layout
+          // does not insert a `gap` between the parens and the time text.
           const timeSuffix = unlockTime
-            ? ` (<span title="${escapeHtml(unlockTitle)}">${unlockTime}</span>)`
+            ? ` <span title="${escapeHtml(unlockTitle)}">(${unlockTime})</span>`
             : "";
           metaParts.push(
             `Last unlocked by ${escapeHtml(unlockWho)}${timeSuffix}`
