@@ -617,6 +617,11 @@ class LocklyCard extends HTMLElement {
       name: slot.name || "",
       pin: slot.pin || "",
       enabled: Boolean(slot.enabled),
+      // Track the slot's current sync status so the dialog can offer
+      // a re-apply when the previous apply timed out (HA storage and
+      // the lock fell out of sync — form values look "unchanged" but
+      // the lock still needs the push).
+      status: slot.status || "",
     };
     const nameField = this._dialog.querySelector("#lockly-slot-name");
     const pinField = this._dialog.querySelector("#lockly-slot-pin");
@@ -654,14 +659,20 @@ class LocklyCard extends HTMLElement {
     const nameChanged = cur.name !== orig.name;
     const pinChanged = cur.pin !== orig.pin;
     const enabledChanged = cur.enabled !== orig.enabled;
+    // If the previous apply timed out, HA-side state is current but
+    // the lock didn't get the push. The dialog should let the user
+    // re-apply even though the form looks unchanged.
+    const needsReapply = orig.status === "timeout";
     return {
       cur,
       changed: nameChanged || pinChanged || enabledChanged,
+      needsReapply,
       // Push to the lock when its state will materially differ: the
       // enabled flag flipped, or the user is rotating a pin on a slot
       // that is/will be active. Pure name edits and "draft" pin edits
-      // on a disabled slot are HA-side only.
-      shouldApply: enabledChanged || (cur.enabled && pinChanged),
+      // on a disabled slot are HA-side only. Also push when the
+      // previous attempt timed out, regardless of form changes.
+      shouldApply: enabledChanged || (cur.enabled && pinChanged) || needsReapply,
     };
   }
 
@@ -672,7 +683,7 @@ class LocklyCard extends HTMLElement {
       return;
     }
     saveBtn.textContent = state.shouldApply ? "Apply" : "Save";
-    saveBtn.disabled = !state.changed;
+    saveBtn.disabled = !(state.changed || state.needsReapply);
   }
 
   _openDialog() {
@@ -744,18 +755,25 @@ class LocklyCard extends HTMLElement {
     const enabled = enabledField ? enabledField.checked : false;
     const formState = this._computeFormState();
     const shouldApply = formState ? formState.shouldApply : true;
-    try {
-      await this._hass.callService("lockly", "update_slot", {
-        entry_id: this._config.entry_id,
-        slot: this._editingSlotId,
-        name,
-        pin,
-        enabled,
-      });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("Lockly update failed", err);
-      return;
+    const changed = formState ? formState.changed : true;
+    // Only push HA-side updates when the form actually changed.  When
+    // the user is retrying after a timeout (status="timeout") with no
+    // edits, HA already has the right values and update_slot would be
+    // a no-op; skipping it avoids a spurious round trip.
+    if (changed) {
+      try {
+        await this._hass.callService("lockly", "update_slot", {
+          entry_id: this._config.entry_id,
+          slot: this._editingSlotId,
+          name,
+          pin,
+          enabled,
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("Lockly update failed", err);
+        return;
+      }
     }
     if (shouldApply) {
       const applyData = {
