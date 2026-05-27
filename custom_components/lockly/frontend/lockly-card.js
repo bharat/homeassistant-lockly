@@ -215,7 +215,12 @@ class LocklyCard extends HTMLElement {
     const showDisabled = this._showDisabled !== false;
     const slots = showDisabled
       ? allSlots
-      : allSlots.filter((slot) => slot.enabled);
+      : allSlots.filter(
+          (slot) =>
+            slot.enabled ||
+            slot.status === "updating" ||
+            slot.status === "queued",
+        );
     this._card.innerHTML = `
       <style>
         .header {
