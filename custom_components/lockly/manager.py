@@ -83,7 +83,7 @@ SLOT_NOT_FOUND = "slot_not_found"
 NO_LOCKS_CONFIGURED = "no_locks_configured"
 INVALID_PIN = "invalid_pin"
 INVALID_SLOT = "invalid_slot"
-DEFAULT_ACTION_TIMEOUT = 10
+DEFAULT_ACTION_TIMEOUT = 30
 MAX_ACTION_RETRIES = 3
 
 

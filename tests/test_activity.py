@@ -617,3 +617,114 @@ def test_dedup_events_physical_base_pair() -> None:
     assert len(result) == 1
     assert result[0]["action"] == "lock"
     assert result[0]["source"] == "automation"
+
+
+# --- pin_code_added / pin_code_deleted wider dedup (case 0) ---
+
+
+def test_dedup_pin_code_added_same_slot_within_window() -> None:
+    """Two pin_code_added for same lock+slot, 30s apart, merge into one."""
+    events = [
+        {
+            "lock": "Garage Entry",
+            "action": "pin_code_added",
+            "slot_id": 7,
+            "user_name": "Alice",
+            "timestamp": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "lock": "Garage Entry",
+            "action": "pin_code_added",
+            "slot_id": 7,
+            "user_name": "Alice",
+            "timestamp": "2026-01-01T00:00:30+00:00",
+        },
+    ]
+    result = dedup_events(events)
+    assert len(result) == 1
+    assert result[0]["timestamp"] == "2026-01-01T00:00:00+00:00"
+    assert result[0]["user_name"] == "Alice"
+    assert result[0]["slot_id"] == 7
+    assert result[0]["action"] == "pin_code_added"
+
+
+def test_dedup_pin_code_added_outside_window_not_merged() -> None:
+    """Two pin_code_added 90s apart exceed the PIN window and stay separate."""
+    events = [
+        {
+            "lock": "Garage Entry",
+            "action": "pin_code_added",
+            "slot_id": 7,
+            "timestamp": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "lock": "Garage Entry",
+            "action": "pin_code_added",
+            "slot_id": 7,
+            "timestamp": "2026-01-01T00:01:30+00:00",
+        },
+    ]
+    result = dedup_events(events)
+    assert len(result) == 2
+
+
+def test_dedup_pin_code_added_different_slot_not_merged() -> None:
+    """Same lock but different slot_id is not merged."""
+    events = [
+        {
+            "lock": "Garage Entry",
+            "action": "pin_code_added",
+            "slot_id": 7,
+            "timestamp": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "lock": "Garage Entry",
+            "action": "pin_code_added",
+            "slot_id": 8,
+            "timestamp": "2026-01-01T00:00:10+00:00",
+        },
+    ]
+    result = dedup_events(events)
+    assert len(result) == 2
+
+
+def test_dedup_pin_code_added_different_lock_not_merged() -> None:
+    """Same slot_id on different locks is not merged."""
+    events = [
+        {
+            "lock": "Garage Entry",
+            "action": "pin_code_added",
+            "slot_id": 7,
+            "timestamp": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "lock": "Front Door",
+            "action": "pin_code_added",
+            "slot_id": 7,
+            "timestamp": "2026-01-01T00:00:10+00:00",
+        },
+    ]
+    result = dedup_events(events)
+    assert len(result) == 2
+
+
+def test_dedup_pin_code_added_then_unlock_not_merged() -> None:
+    """pin_code_added followed by unlock is not collapsed."""
+    events = [
+        {
+            "lock": "Garage Entry",
+            "action": "pin_code_added",
+            "slot_id": 7,
+            "timestamp": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "lock": "Garage Entry",
+            "action": "unlock",
+            "slot_id": 7,
+            "timestamp": "2026-01-01T00:00:10+00:00",
+        },
+    ]
+    result = dedup_events(events)
+    assert len(result) == 2
+    assert result[0]["action"] == "pin_code_added"
+    assert result[1]["action"] == "unlock"

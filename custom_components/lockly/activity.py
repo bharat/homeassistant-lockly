@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 MAX_EVENTS = 500
 DEDUP_WINDOW_SECONDS = 5
 DEDUP_WINDOW_PHYSICAL = 60
+DEDUP_WINDOW_PIN_CODE = 60
 
 _PHYSICAL_TO_BASE: dict[str, str] = {
     "manual_lock": "lock",
@@ -28,14 +29,10 @@ _DELIBERATE_TO_BASE: dict[str, str] = {
 _AUTOMATION_SOURCES: set[str] = {"rf", "remote"}
 
 
-def _within_window(
-    prev: dict[str, object],
-    curr: dict[str, object],
-    window: float = DEDUP_WINDOW_SECONDS,
+def _timestamps_within(
+    prev: dict[str, object], curr: dict[str, object], window: float
 ) -> bool:
-    """Check whether two events are for the same lock within *window* seconds."""
-    if prev.get("lock") != curr.get("lock"):
-        return False
+    """Return True when prev and curr have parseable timestamps within *window*."""
     prev_ts = prev.get("timestamp")
     curr_ts = curr.get("timestamp")
     if not isinstance(prev_ts, str) or not isinstance(curr_ts, str):
@@ -46,6 +43,17 @@ def _within_window(
     except (ValueError, TypeError):
         return False
     return abs((curr_time - prev_time).total_seconds()) <= window
+
+
+def _within_window(
+    prev: dict[str, object],
+    curr: dict[str, object],
+    window: float = DEDUP_WINDOW_SECONDS,
+) -> bool:
+    """Check whether two events are for the same lock within *window* seconds."""
+    if prev.get("lock") != curr.get("lock"):
+        return False
+    return _timestamps_within(prev, curr, window)
 
 
 def _merge_keep_first(
@@ -65,12 +73,30 @@ def _try_merge(
 ) -> dict[str, object] | None:
     """Merge two adjacent events if they are redundant.
 
-    Cases 1-3 handle firmware echoes and exact repeats within a narrow
-    window.  Case 4 handles deliberate physical actions (one_touch_lock)
-    followed by a redundant automation lock within a wider window.
+    Case 0 handles slow pin_code_added / pin_code_deleted echoes on the
+    same lock + slot within a wider window.  Cases 1-3 handle firmware
+    echoes and exact repeats within a narrow window.  Case 4 handles
+    deliberate physical actions (one_touch_lock) followed by a redundant
+    automation lock within a wider window.
     """
     prev_action = prev.get("action")
     curr_action = curr.get("action")
+
+    # Case 0: pin_code_added / pin_code_deleted echo on the same lock+slot
+    # within the wider PIN-code window. Lockly firmware can take 10s+ to ack
+    # a slot update, so the manager often retries before the first ack lands;
+    # the lock then echoes each retry. Collapse all of these into one entry
+    # at display time. Requires same lock AND same slot, so an unrelated
+    # action on the same lock does not get swallowed.
+    if (
+        prev_action == curr_action
+        and curr_action in ("pin_code_added", "pin_code_deleted")
+        and prev.get("lock") == curr.get("lock")
+        and prev.get("slot_id") is not None
+        and prev.get("slot_id") == curr.get("slot_id")
+        and _timestamps_within(prev, curr, DEDUP_WINDOW_PIN_CODE)
+    ):
+        return _merge_keep_first(prev, curr)
 
     if _within_window(prev, curr):
         # Case 1: curr is firmware echo, prev is the base action
