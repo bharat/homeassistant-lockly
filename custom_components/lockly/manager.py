@@ -107,6 +107,7 @@ class LocklyManager:
         self._pending_by_lock: dict[str, list[int]] = {}
         self._pending_slots: dict[int, set[str]] = {}
         self._pending_lock_names: dict[int, list[str]] = {}
+        self._slot_outcomes: dict[int, dict[str, str]] = {}
         self._pending_actions: dict[tuple[int, str], dict[str, object]] = {}
         self._lock_queues: dict[str, asyncio.Queue[tuple[int, dict]]] = {}
         self._lock_workers: dict[str, asyncio.Task] = {}
@@ -628,6 +629,7 @@ class LocklyManager:
         pending_locks = set(job.lock_names)
         self._pending_slots[job.slot_id] = pending_locks
         self._pending_lock_names[job.slot_id] = list(job.lock_names)
+        self._slot_outcomes[job.slot_id] = {}
         for lock_name in job.lock_names:
             self._pending_by_lock.setdefault(lock_name, []).append(job.slot_id)
             payload = self._build_slot_payload(
@@ -669,6 +671,7 @@ class LocklyManager:
         await self.update_slot(slot_id, busy=False, status="")
         self._pending_slots.pop(slot_id, None)
         self._pending_lock_names.pop(slot_id, None)
+        self._slot_outcomes.pop(slot_id, None)
         for lock_name in lock_names:
             self._pending_actions.pop((slot_id, lock_name), None)
         await self._finalize_slot_completion(slot_id)
@@ -705,6 +708,7 @@ class LocklyManager:
             if handle is not None:
                 handle.cancel()
         self._pending_actions.clear()
+        self._slot_outcomes.clear()
         if self._activity is not None:
             await self._activity.async_stop()
 
@@ -804,11 +808,13 @@ class LocklyManager:
         pending_locks = self._pending_slots.get(slot_id)
         if pending_locks:
             pending_locks.discard(lock_name)
+        outcomes = self._slot_outcomes.get(slot_id)
+        if outcomes is not None:
+            outcomes[lock_name] = "timeout"
         if slot_id not in self._coordinator.data:
             return
         await self.update_slot(
             slot_id,
-            status="timeout",
             last_response={
                 "lock": lock_name,
                 "status": "timeout",
@@ -823,11 +829,7 @@ class LocklyManager:
             attempts + 1,
         )
         if pending_locks is not None and not pending_locks:
-            self._pending_slots.pop(slot_id, None)
-            self._pending_lock_names.pop(slot_id, None)
-            self._slot_publish_started.discard(slot_id)
-            await self.update_slot(slot_id, busy=False, status="timeout")
-            await self._finalize_slot_completion(slot_id)
+            await self._finalize_slot_after_settle(slot_id)
 
     async def _publish_lock(self, lock_name: str, payload: dict) -> None:
         """Publish a Zigbee2MQTT per-lock set command."""
@@ -1033,6 +1035,9 @@ class LocklyManager:
             status = "enabled"
         else:
             status = "unknown"
+        outcomes = self._slot_outcomes.get(slot_id)
+        if outcomes is not None:
+            outcomes[lock_name] = status
         LOGGER.debug(
             "Lock action for slot %s on %s: %s",
             slot_id,
@@ -1048,11 +1053,25 @@ class LocklyManager:
             last_response_ts=time.time(),
         )
         if pending_locks is not None and not pending_locks:
-            self._pending_slots.pop(slot_id, None)
-            self._slot_publish_started.discard(slot_id)
-            await self.update_slot(slot_id, busy=False, status="")
-            self._pending_lock_names.pop(slot_id, None)
-            await self._finalize_slot_completion(slot_id)
+            await self._finalize_slot_after_settle(slot_id)
+
+    async def _finalize_slot_after_settle(self, slot_id: int) -> None:
+        """Finalize a slot once every lock has settled.
+
+        Derives the overall status from per-lock outcomes so a single timeout
+        among otherwise successful locks does not flip the slot to "timeout".
+        """
+        self._pending_slots.pop(slot_id, None)
+        self._pending_lock_names.pop(slot_id, None)
+        self._slot_publish_started.discard(slot_id)
+        outcomes = self._slot_outcomes.pop(slot_id, None) or {}
+        if outcomes and all(value == "timeout" for value in outcomes.values()):
+            final_status = "timeout"
+        else:
+            final_status = ""
+        if slot_id in self._coordinator.data:
+            await self.update_slot(slot_id, busy=False, status=final_status)
+        await self._finalize_slot_completion(slot_id)
 
     async def _finalize_slot_completion(self, slot_id: int) -> None:
         """Resolve completion futures and remove slots if requested."""
