@@ -93,19 +93,38 @@ def test_fire_action_ignores_unknown_type(
     mock_trigger.assert_not_called()
 
 
+def _register_lock_state(hass: HomeAssistant, lock_name: str) -> None:
+    """Register a `lock.*` entity in the state machine with the given friendly_name."""
+    slug = lock_name.lower().replace(" ", "_").replace("-", "_")
+    hass.states.async_set(
+        f"lock.{slug}",
+        "locked",
+        {"friendly_name": lock_name},
+    )
+
+
 async def _setup_entry_with_lock_names(
     hass: HomeAssistant,
     enable_custom_integrations: Any,
     lock_names: list[str],
     *,
     entry_id: str | None = None,
+    register_states: bool = True,
 ) -> MockConfigEntry:
-    """Set up a Lockly config entry whose lock_names resolves to the given list."""
+    """Set up a Lockly config entry whose lock_names resolves to the given list.
+
+    By default this also registers matching `lock.*` entities in the state
+    machine; the dispatch filter now derives its set of valid lock names
+    from the state machine rather than from config.
+    """
     _ = enable_custom_integrations
     hass.data["lockly_skip_frontend"] = True
     hass.data["lockly_skip_mqtt"] = True
     hass.data["lockly_skip_worker"] = True
     hass.data["lockly_skip_timeout"] = True
+    if register_states:
+        for name in lock_names:
+            _register_lock_state(hass, name)
     kwargs: dict[str, Any] = {
         "domain": DOMAIN,
         "title": "Lockly",
@@ -230,6 +249,7 @@ async def test_setup_removes_stale_event_entities(
         },
     )
     entry.add_to_hass(hass)
+    _register_lock_state(hass, "Garden Upper Lock")
 
     registry = er.async_get(hass)
     stale = registry.async_get_or_create(
@@ -295,3 +315,109 @@ async def test_cleanup_skipped_when_no_lock_names_resolved(
     await hass.async_block_till_done()
 
     assert registry.async_get(existing.entity_id) is not None
+
+
+@pytest.mark.enable_socket
+async def test_state_dispatch_allows_lock_present_only_in_state_machine(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Dispatch when the only signal is a `lock.*` entity in the state machine."""
+    _ = enable_custom_integrations
+    hass.data["lockly_skip_frontend"] = True
+    hass.data["lockly_skip_mqtt"] = True
+    hass.data["lockly_skip_worker"] = True
+    hass.data["lockly_skip_timeout"] = True
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Lockly",
+        data={
+            CONF_NAME: "Lockly",
+            CONF_FIRST_SLOT: DEFAULT_FIRST_SLOT,
+            CONF_LAST_SLOT: DEFAULT_LAST_SLOT,
+            CONF_MQTT_TOPIC: DEFAULT_MQTT_TOPIC,
+            CONF_ENDPOINT: DEFAULT_ENDPOINT,
+        },
+    )
+    entry.add_to_hass(hass)
+    _register_lock_state(hass, "Front Door Lock")
+    await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    assert manager.lock_names == []
+
+    action_calls: list[tuple[tuple, dict]] = []
+
+    async def fake_action(*args: Any, **kwargs: Any) -> None:
+        action_calls.append((args, kwargs))
+
+    manager.handle_mqtt_action = fake_action
+
+    valid = SimpleNamespace(
+        topic=f"{DEFAULT_MQTT_TOPIC}/Front Door Lock",
+        payload='{"action": "unlock"}',
+    )
+    await _handle_state_payload(manager, valid)
+    assert len(action_calls) == 1
+    args, kwargs = action_calls[0]
+    assert args[0] == "Front Door Lock"
+    assert args[1] == "unlock"
+    assert kwargs.get("fire_lock_event") is True
+
+    stranger = SimpleNamespace(
+        topic=f"{DEFAULT_MQTT_TOPIC}/Entry Keypad",
+        payload='{"action": "unlock"}',
+    )
+    await _handle_state_payload(manager, stranger)
+    assert len(action_calls) == 1
+
+
+@pytest.mark.enable_socket
+async def test_cleanup_uses_ha_lock_registry_for_known_set(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Cleanup keeps entities matching a current `lock.*` and drops others."""
+    _ = enable_custom_integrations
+    hass.data["lockly_skip_frontend"] = True
+    hass.data["lockly_skip_mqtt"] = True
+    hass.data["lockly_skip_worker"] = True
+    hass.data["lockly_skip_timeout"] = True
+
+    entry_id = "lockly_registry_cleanup"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Lockly",
+        entry_id=entry_id,
+        data={
+            CONF_NAME: "Lockly",
+            CONF_FIRST_SLOT: DEFAULT_FIRST_SLOT,
+            CONF_LAST_SLOT: DEFAULT_LAST_SLOT,
+            CONF_MQTT_TOPIC: DEFAULT_MQTT_TOPIC,
+            CONF_ENDPOINT: DEFAULT_ENDPOINT,
+        },
+    )
+    entry.add_to_hass(hass)
+    _register_lock_state(hass, "Front Door Lock")
+
+    registry = er.async_get(hass)
+    keep = registry.async_get_or_create(
+        "event",
+        DOMAIN,
+        f"{entry_id}-lock-event-front_door_lock",
+        config_entry=entry,
+        suggested_object_id="lockly_front_door_lock",
+    )
+    stale = registry.async_get_or_create(
+        "event",
+        DOMAIN,
+        f"{entry_id}-lock-event-control4_keypad",
+        config_entry=entry,
+        suggested_object_id="lockly_control4_keypad",
+    )
+
+    await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+    assert registry.async_get(keep.entity_id) is not None
+    assert registry.async_get(stale.entity_id) is None

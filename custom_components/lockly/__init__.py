@@ -430,22 +430,40 @@ def _lock_event_slug(lock_name: str) -> str:
     return lock_name.lower().replace(" ", "_").replace("-", "_")
 
 
+def _known_lock_names(hass: HomeAssistant) -> set[str]:
+    """Return friendly_names of every lock.* entity currently in HA.
+
+    Lockly intentionally pulls this from the live state machine rather
+    than the config entry, so users who specify locks only at the
+    Lovelace card level (or via dynamic groups) are not silently
+    filtered out. Non-lock devices that publish on the same Zigbee2MQTT
+    base topic are excluded by domain, which is the original goal of
+    the filter introduced in PR #103.
+    """
+    names: set[str] = set()
+    for state in hass.states.async_all("lock"):
+        friendly = state.attributes.get("friendly_name")
+        if isinstance(friendly, str) and friendly:
+            names.add(friendly)
+    return names
+
+
 def _cleanup_stale_event_entities(
     hass: HomeAssistant,
     entry: LocklyConfigEntry,
-    lock_names: list[str],
 ) -> None:
-    """Remove event entities for locks no longer in the configured set.
+    """Remove event entities for locks no longer known to HA.
 
     Older builds created `event.lockly_*` entities for any device that
     happened to publish actions on the same Zigbee2MQTT base topic (e.g.
-    Control4 keypads sharing the broker). The discovery path is now scoped
-    to configured locks, but pre-existing stale entries must be cleaned up.
+    Control4 keypads sharing the broker). The discovery path now scopes
+    to currently registered `lock.*` entities, but pre-existing stale
+    entries must be cleaned up.
     """
-    if not lock_names:
+    known = {_lock_event_slug(name) for name in _known_lock_names(hass)}
+    if not known:
         return
     registry = er.async_get(hass)
-    expected = {_lock_event_slug(name) for name in lock_names}
     prefix = f"{entry.entry_id}-lock-event-"
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
         if entity.domain != "event":
@@ -454,9 +472,9 @@ def _cleanup_stale_event_entities(
         if not unique_id.startswith(prefix):
             continue
         slug = unique_id[len(prefix) :]
-        if slug not in expected:
+        if slug not in known:
             LOGGER.info(
-                "Removing stale Lockly event entity %s (lock %s not configured)",
+                "Removing stale Lockly event entity %s (lock %s not a known HA lock)",
                 entity.entity_id,
                 slug,
             )
@@ -477,9 +495,9 @@ async def _handle_action_message(
     lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
     if not lock_name:
         return
-    if lock_name not in manager.lock_names:
+    if lock_name not in _known_lock_names(manager.hass):
         LOGGER.debug(
-            "Ignoring MQTT %s (lock %s not in configured set)", topic, lock_name
+            "Ignoring MQTT %s (lock %s not a known HA lock entity)", topic, lock_name
         )
         return
     LOGGER.debug("MQTT %s: %s", topic, payload)
@@ -507,9 +525,9 @@ async def _handle_state_payload(
     lock_name = topic[len(manager.mqtt_topic) + 1 :]
     if not lock_name:
         return
-    if lock_name not in manager.lock_names:
+    if lock_name not in _known_lock_names(manager.hass):
         LOGGER.debug(
-            "Ignoring MQTT %s (lock %s not in configured set)", topic, lock_name
+            "Ignoring MQTT %s (lock %s not a known HA lock entity)", topic, lock_name
         )
         return
     action = payload.get("action")
@@ -573,7 +591,7 @@ async def async_setup_entry(
     manager = await _setup_entry_runtime(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = entry.runtime_data
     _cleanup_legacy_entities(hass, entry)
-    _cleanup_stale_event_entities(hass, entry, manager.lock_names)
+    _cleanup_stale_event_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     await _subscribe_mqtt(hass, entry, manager)
