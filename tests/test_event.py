@@ -2,11 +2,32 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
+from homeassistant.const import CONF_NAME
+from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.lockly import (
+    _handle_action_message,
+    _handle_state_payload,
+)
+from custom_components.lockly.const import (
+    CONF_ENDPOINT,
+    CONF_FIRST_SLOT,
+    CONF_LAST_SLOT,
+    CONF_LOCK_NAMES,
+    CONF_MQTT_TOPIC,
+    DEFAULT_ENDPOINT,
+    DEFAULT_FIRST_SLOT,
+    DEFAULT_LAST_SLOT,
+    DEFAULT_MQTT_TOPIC,
+    DOMAIN,
+)
 from custom_components.lockly.event import LocklyLockEvent
 from custom_components.lockly.logbook import EVENT_LOCKLY_LOCK_ACTIVITY
 
@@ -70,3 +91,207 @@ def test_fire_action_ignores_unknown_type(
         entity.fire_action("totally_bogus", {})
 
     mock_trigger.assert_not_called()
+
+
+async def _setup_entry_with_lock_names(
+    hass: HomeAssistant,
+    enable_custom_integrations: Any,
+    lock_names: list[str],
+    *,
+    entry_id: str | None = None,
+) -> MockConfigEntry:
+    """Set up a Lockly config entry whose lock_names resolves to the given list."""
+    _ = enable_custom_integrations
+    hass.data["lockly_skip_frontend"] = True
+    hass.data["lockly_skip_mqtt"] = True
+    hass.data["lockly_skip_worker"] = True
+    hass.data["lockly_skip_timeout"] = True
+    kwargs: dict[str, Any] = {
+        "domain": DOMAIN,
+        "title": "Lockly",
+        "data": {
+            CONF_NAME: "Lockly",
+            CONF_FIRST_SLOT: DEFAULT_FIRST_SLOT,
+            CONF_LAST_SLOT: DEFAULT_LAST_SLOT,
+            CONF_MQTT_TOPIC: DEFAULT_MQTT_TOPIC,
+            CONF_ENDPOINT: DEFAULT_ENDPOINT,
+            CONF_LOCK_NAMES: lock_names,
+        },
+    }
+    if entry_id is not None:
+        kwargs["entry_id"] = entry_id
+    entry = MockConfigEntry(**kwargs)
+    entry.add_to_hass(hass)
+    await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+    return entry
+
+
+@pytest.mark.enable_socket
+async def test_state_dispatch_ignores_unconfigured_lock(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """State-payload messages for non-configured locks must not reach the manager."""
+    entry = await _setup_entry_with_lock_names(
+        hass, enable_custom_integrations, ["Garden Upper Lock"]
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    assert "Garden Upper Lock" in manager.lock_names
+
+    action_calls: list[tuple[tuple, dict]] = []
+    state_calls: list[tuple[tuple, dict]] = []
+
+    async def fake_action(*args: Any, **kwargs: Any) -> None:
+        action_calls.append((args, kwargs))
+
+    async def fake_state(*args: Any, **kwargs: Any) -> None:
+        state_calls.append((args, kwargs))
+
+    manager.handle_mqtt_action = fake_action
+    manager.handle_mqtt_state = fake_state
+
+    stale = SimpleNamespace(
+        topic=f"{DEFAULT_MQTT_TOPIC}/Control4 Keypad",
+        payload='{"action": "unlock", "action_user": 5}',
+    )
+    await _handle_state_payload(manager, stale)
+    assert action_calls == []
+    assert state_calls == []
+
+    valid = SimpleNamespace(
+        topic=f"{DEFAULT_MQTT_TOPIC}/Garden Upper Lock",
+        payload='{"action": "unlock"}',
+    )
+    await _handle_state_payload(manager, valid)
+    assert len(action_calls) == 1
+    args, kwargs = action_calls[0]
+    assert args[0] == "Garden Upper Lock"
+    assert args[1] == "unlock"
+    assert kwargs.get("fire_lock_event") is True
+
+
+@pytest.mark.enable_socket
+async def test_action_dispatch_ignores_unconfigured_lock(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Action-topic messages for non-configured locks must not reach the manager."""
+    entry = await _setup_entry_with_lock_names(
+        hass, enable_custom_integrations, ["Garden Upper Lock"]
+    )
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+
+    calls: list[tuple[tuple, dict]] = []
+
+    async def tracker(*args: Any, **kwargs: Any) -> None:
+        calls.append((args, kwargs))
+
+    manager.handle_mqtt_action = tracker
+
+    stale = SimpleNamespace(
+        topic=f"{DEFAULT_MQTT_TOPIC}/Control4 Keypad/action",
+        payload="unlock",
+    )
+    await _handle_action_message(manager, stale)
+    assert calls == []
+
+    valid = SimpleNamespace(
+        topic=f"{DEFAULT_MQTT_TOPIC}/Garden Upper Lock/action",
+        payload="unlock",
+    )
+    await _handle_action_message(manager, valid)
+    assert len(calls) == 1
+    args, _ = calls[0]
+    assert args[0] == "Garden Upper Lock"
+
+
+@pytest.mark.enable_socket
+async def test_setup_removes_stale_event_entities(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """Pre-existing event entities for unconfigured locks are removed at setup."""
+    _ = enable_custom_integrations
+    hass.data["lockly_skip_frontend"] = True
+    hass.data["lockly_skip_mqtt"] = True
+    hass.data["lockly_skip_worker"] = True
+    hass.data["lockly_skip_timeout"] = True
+
+    entry_id = "lockly_test_entry"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Lockly",
+        entry_id=entry_id,
+        data={
+            CONF_NAME: "Lockly",
+            CONF_FIRST_SLOT: DEFAULT_FIRST_SLOT,
+            CONF_LAST_SLOT: DEFAULT_LAST_SLOT,
+            CONF_MQTT_TOPIC: DEFAULT_MQTT_TOPIC,
+            CONF_ENDPOINT: DEFAULT_ENDPOINT,
+            CONF_LOCK_NAMES: ["Garden Upper Lock"],
+        },
+    )
+    entry.add_to_hass(hass)
+
+    registry = er.async_get(hass)
+    stale = registry.async_get_or_create(
+        "event",
+        DOMAIN,
+        f"{entry_id}-lock-event-control4_keypad",
+        config_entry=entry,
+        suggested_object_id="lockly_control4_keypad",
+    )
+    keep = registry.async_get_or_create(
+        "event",
+        DOMAIN,
+        f"{entry_id}-lock-event-garden_upper_lock",
+        config_entry=entry,
+        suggested_object_id="lockly_garden_upper_lock",
+    )
+    assert registry.async_get(stale.entity_id) is not None
+    assert registry.async_get(keep.entity_id) is not None
+
+    await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+    assert registry.async_get(stale.entity_id) is None
+    assert registry.async_get(keep.entity_id) is not None
+
+
+@pytest.mark.enable_socket
+async def test_cleanup_skipped_when_no_lock_names_resolved(
+    hass: HomeAssistant, enable_custom_integrations: Any
+) -> None:
+    """If lock_names is empty, cleanup must not nuke existing event entities."""
+    _ = enable_custom_integrations
+    hass.data["lockly_skip_frontend"] = True
+    hass.data["lockly_skip_mqtt"] = True
+    hass.data["lockly_skip_worker"] = True
+    hass.data["lockly_skip_timeout"] = True
+
+    entry_id = "lockly_empty_entry"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Lockly",
+        entry_id=entry_id,
+        data={
+            CONF_NAME: "Lockly",
+            CONF_FIRST_SLOT: DEFAULT_FIRST_SLOT,
+            CONF_LAST_SLOT: DEFAULT_LAST_SLOT,
+            CONF_MQTT_TOPIC: DEFAULT_MQTT_TOPIC,
+            CONF_ENDPOINT: DEFAULT_ENDPOINT,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    registry = er.async_get(hass)
+    existing = registry.async_get_or_create(
+        "event",
+        DOMAIN,
+        f"{entry_id}-lock-event-garden_upper_lock",
+        config_entry=entry,
+        suggested_object_id="lockly_garden_upper_lock",
+    )
+
+    await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+    assert registry.async_get(existing.entity_id) is not None

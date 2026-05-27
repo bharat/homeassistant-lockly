@@ -425,6 +425,117 @@ def _cleanup_legacy_entities(hass: HomeAssistant, entry: LocklyConfigEntry) -> N
             registry.async_remove(entity.entity_id)
 
 
+def _lock_event_slug(lock_name: str) -> str:
+    """Return the unique_id slug used by LocklyLockEvent for a lock_name."""
+    return lock_name.lower().replace(" ", "_").replace("-", "_")
+
+
+def _cleanup_stale_event_entities(
+    hass: HomeAssistant,
+    entry: LocklyConfigEntry,
+    lock_names: list[str],
+) -> None:
+    """Remove event entities for locks no longer in the configured set.
+
+    Older builds created `event.lockly_*` entities for any device that
+    happened to publish actions on the same Zigbee2MQTT base topic (e.g.
+    Control4 keypads sharing the broker). The discovery path is now scoped
+    to configured locks, but pre-existing stale entries must be cleaned up.
+    """
+    if not lock_names:
+        return
+    registry = er.async_get(hass)
+    expected = {_lock_event_slug(name) for name in lock_names}
+    prefix = f"{entry.entry_id}-lock-event-"
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.domain != "event":
+            continue
+        unique_id = entity.unique_id
+        if not unique_id.startswith(prefix):
+            continue
+        slug = unique_id[len(prefix) :]
+        if slug not in expected:
+            LOGGER.info(
+                "Removing stale Lockly event entity %s (lock %s not configured)",
+                entity.entity_id,
+                slug,
+            )
+            registry.async_remove(entity.entity_id)
+
+
+async def _handle_action_message(
+    manager: LocklyManager, msg: mqtt.ReceiveMessage
+) -> None:
+    """Handle raw action string from {topic}/+/action (slot confirmation)."""
+    topic = msg.topic
+    payload = msg.payload
+    if isinstance(payload, bytes):
+        try:
+            payload = payload.decode()
+        except UnicodeDecodeError:
+            payload = payload.decode(errors="replace")
+    lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
+    if not lock_name:
+        return
+    if lock_name not in manager.lock_names:
+        LOGGER.debug(
+            "Ignoring MQTT %s (lock %s not in configured set)", topic, lock_name
+        )
+        return
+    LOGGER.debug("MQTT %s: %s", topic, payload)
+    await manager.handle_mqtt_action(lock_name, str(payload))
+
+
+async def _handle_state_payload(
+    manager: LocklyManager, msg: mqtt.ReceiveMessage
+) -> None:
+    """Handle JSON state from {topic}/+ (actions, state changes)."""
+    topic = msg.topic
+    payload = msg.payload
+    if isinstance(payload, bytes):
+        try:
+            payload = payload.decode()
+        except UnicodeDecodeError:
+            payload = payload.decode(errors="replace")
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return
+    if not isinstance(payload, dict):
+        return
+    lock_name = topic[len(manager.mqtt_topic) + 1 :]
+    if not lock_name:
+        return
+    if lock_name not in manager.lock_names:
+        LOGGER.debug(
+            "Ignoring MQTT %s (lock %s not in configured set)", topic, lock_name
+        )
+        return
+    action = payload.get("action")
+    if action:
+        action_user = payload.get("action_user")
+        if isinstance(action_user, str) and action_user.isdigit():
+            action_user = int(action_user)
+        if not isinstance(action_user, int):
+            action_user = None
+        action_source_name = payload.get("action_source_name")
+        if not isinstance(action_source_name, str):
+            action_source_name = None
+        if action in ("pin_code_added", "pin_code_deleted"):
+            action_source_name = None
+        LOGGER.debug("MQTT %s action: %s", topic, action)
+        await manager.handle_mqtt_action(
+            lock_name,
+            str(action),
+            action_user=action_user,
+            action_source_name=action_source_name,
+            fire_lock_event=True,
+        )
+        return
+    await manager.handle_mqtt_state(lock_name, payload)
+
+
 async def _subscribe_mqtt(
     hass: HomeAssistant,
     entry: LocklyConfigEntry,
@@ -434,72 +545,21 @@ async def _subscribe_mqtt(
     if hass.data.get(f"{DOMAIN}_skip_mqtt", False):
         return
 
-    async def _handle_action_message(msg: mqtt.ReceiveMessage) -> None:
-        """Handle raw action string from {topic}/+/action (slot confirmation)."""
-        topic = msg.topic
-        payload = msg.payload
-        if isinstance(payload, bytes):
-            try:
-                payload = payload.decode()
-            except UnicodeDecodeError:
-                payload = payload.decode(errors="replace")
-        lock_name = topic[len(manager.mqtt_topic) + 1 : -len("/action")]
-        if not lock_name:
-            return
-        LOGGER.debug("MQTT %s: %s", topic, payload)
-        await manager.handle_mqtt_action(lock_name, str(payload))
+    async def _on_action(msg: mqtt.ReceiveMessage) -> None:
+        await _handle_action_message(manager, msg)
 
-    async def _handle_state_payload(msg: mqtt.ReceiveMessage) -> None:
-        """Handle JSON state from {topic}/+ (actions, state changes)."""
-        topic = msg.topic
-        payload = msg.payload
-        if isinstance(payload, bytes):
-            try:
-                payload = payload.decode()
-            except UnicodeDecodeError:
-                payload = payload.decode(errors="replace")
-        if isinstance(payload, str):
-            try:
-                payload = json.loads(payload)
-            except json.JSONDecodeError:
-                return
-        if not isinstance(payload, dict):
-            return
-        lock_name = topic[len(manager.mqtt_topic) + 1 :]
-        if not lock_name:
-            return
-        action = payload.get("action")
-        if action:
-            action_user = payload.get("action_user")
-            if isinstance(action_user, str) and action_user.isdigit():
-                action_user = int(action_user)
-            if not isinstance(action_user, int):
-                action_user = None
-            action_source_name = payload.get("action_source_name")
-            if not isinstance(action_source_name, str):
-                action_source_name = None
-            if action in ("pin_code_added", "pin_code_deleted"):
-                action_source_name = None
-            LOGGER.debug("MQTT %s action: %s", topic, action)
-            await manager.handle_mqtt_action(
-                lock_name,
-                str(action),
-                action_user=action_user,
-                action_source_name=action_source_name,
-                fire_lock_event=True,
-            )
-            return
-        await manager.handle_mqtt_state(lock_name, payload)
+    async def _on_state(msg: mqtt.ReceiveMessage) -> None:
+        await _handle_state_payload(manager, msg)
 
     unsub_action: Callable[[], None] = await mqtt.async_subscribe(
         hass,
         f"{manager.mqtt_topic}/+/action",
-        _handle_action_message,
+        _on_action,
     )
     unsub_state: Callable[[], None] = await mqtt.async_subscribe(
         hass,
         f"{manager.mqtt_topic}/+",
-        _handle_state_payload,
+        _on_state,
     )
     entry.runtime_data.subscriptions.extend([unsub_action, unsub_state])
 
@@ -513,6 +573,7 @@ async def async_setup_entry(
     manager = await _setup_entry_runtime(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = entry.runtime_data
     _cleanup_legacy_entities(hass, entry)
+    _cleanup_stale_event_entities(hass, entry, manager.lock_names)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     await _subscribe_mqtt(hass, entry, manager)
