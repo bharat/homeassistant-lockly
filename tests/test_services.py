@@ -618,6 +618,139 @@ async def test_action_timeout_retries_then_times_out(
     }
 
 
+async def _apply_to_two_locks(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    """Trigger apply_slot against both garden locks and pump the loop."""
+    hass.states.async_set(
+        "lock.garden_lower_lock",
+        "locked",
+        {"friendly_name": "Garden Lower Lock"},
+    )
+    await hass.services.async_call(
+        DOMAIN,
+        "apply_slot",
+        {
+            "entry_id": entry.entry_id,
+            "slot": 1,
+            "lock_entities": [
+                "lock.garden_upper_lock",
+                "lock.garden_lower_lock",
+            ],
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+
+async def _simulate_timeout(
+    hass: HomeAssistant, manager: Any, slot_id: int, lock_name: str
+) -> None:
+    """Cancel a lock's scheduled timer and invoke the timeout handler."""
+    manager._cancel_action_timer(slot_id, lock_name)  # noqa: SLF001
+    await manager._handle_action_timeout(slot_id, lock_name)  # noqa: SLF001
+    await hass.async_block_till_done()
+
+
+@pytest.mark.enable_socket
+async def test_multi_lock_partial_timeout_keeps_status_clear(
+    hass: HomeAssistant, enable_custom_integrations: Any, monkeypatch: Any
+) -> None:
+    """One lock timing out while others succeed must not flip slot to timeout."""
+    monkeypatch.setattr(lockly_manager, "DEFAULT_ACTION_TIMEOUT", 100)
+    monkeypatch.setattr(lockly_manager, "MAX_ACTION_RETRIES", 0)
+    entry = await _setup_entry(
+        hass, enable_custom_integrations, skip_timeout=False, skip_worker=True
+    )
+    async_mock_service(hass, "mqtt", "publish")
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="One", pin="1111", enabled=True)
+
+    await _apply_to_two_locks(hass, entry)
+
+    await manager.handle_mqtt_action(
+        "Garden Upper Lock", "pin_code_added", action_user=1
+    )
+    await hass.async_block_till_done()
+
+    slot = manager.coordinator.data[1]
+    assert slot.status == "updating"
+    assert slot.busy is True
+
+    await _simulate_timeout(hass, manager, 1, "Garden Lower Lock")
+
+    assert slot.status == ""
+    assert slot.busy is False
+    assert slot.last_response == {
+        "lock": "Garden Lower Lock",
+        "status": "timeout",
+        "attempts": 1,
+    }
+
+
+@pytest.mark.enable_socket
+async def test_multi_lock_all_timeout_sets_status_timeout(
+    hass: HomeAssistant, enable_custom_integrations: Any, monkeypatch: Any
+) -> None:
+    """When every lock times out, the slot finalizes as timeout."""
+    monkeypatch.setattr(lockly_manager, "DEFAULT_ACTION_TIMEOUT", 100)
+    monkeypatch.setattr(lockly_manager, "MAX_ACTION_RETRIES", 0)
+    entry = await _setup_entry(
+        hass, enable_custom_integrations, skip_timeout=False, skip_worker=True
+    )
+    async_mock_service(hass, "mqtt", "publish")
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="One", pin="1111", enabled=True)
+
+    await _apply_to_two_locks(hass, entry)
+
+    await _simulate_timeout(hass, manager, 1, "Garden Upper Lock")
+
+    slot = manager.coordinator.data[1]
+    assert slot.status == "updating"
+    assert slot.busy is True
+
+    await _simulate_timeout(hass, manager, 1, "Garden Lower Lock")
+
+    assert slot.status == "timeout"
+    assert slot.busy is False
+
+
+@pytest.mark.enable_socket
+async def test_multi_lock_status_stays_updating_when_one_times_out(
+    hass: HomeAssistant, enable_custom_integrations: Any, monkeypatch: Any
+) -> None:
+    """Slot must not flash to timeout while other locks are still pending."""
+    monkeypatch.setattr(lockly_manager, "DEFAULT_ACTION_TIMEOUT", 100)
+    monkeypatch.setattr(lockly_manager, "MAX_ACTION_RETRIES", 0)
+    entry = await _setup_entry(
+        hass, enable_custom_integrations, skip_timeout=False, skip_worker=True
+    )
+    async_mock_service(hass, "mqtt", "publish")
+    manager = hass.data[DOMAIN][entry.entry_id].manager
+    await manager.add_slot()
+    await manager.update_slot(1, name="One", pin="1111", enabled=True)
+
+    await _apply_to_two_locks(hass, entry)
+
+    slot = manager.coordinator.data[1]
+    assert slot.status == "updating"
+    assert slot.busy is True
+
+    await _simulate_timeout(hass, manager, 1, "Garden Upper Lock")
+
+    assert slot.status == "updating"
+    assert slot.busy is True
+
+    await manager.handle_mqtt_action(
+        "Garden Lower Lock", "pin_code_added", action_user=1
+    )
+    await hass.async_block_till_done()
+
+    assert slot.status == ""
+    assert slot.busy is False
+
+
 @pytest.mark.enable_socket
 async def test_lock_queue_preserves_order(
     hass: HomeAssistant, enable_custom_integrations: Any
