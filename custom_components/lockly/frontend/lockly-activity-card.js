@@ -437,7 +437,7 @@ class LocklyActivityCard extends HTMLElement {
     const label = ACTION_LABELS[action] || action;
     const lockName = escapeHtml(evt.lock || "Unknown lock");
     const rawLock = evt.lock || "";
-    const userName = evt.user_name ? escapeHtml(evt.user_name) : null;
+    const userName = evt.user_name || null;
     const slotId = evt.slot_id != null ? `Slot ${evt.slot_id}` : null;
     const who = userName || slotId || "";
     const source = evt.source ? SOURCE_LABELS[evt.source] || evt.source : "";
