@@ -121,6 +121,11 @@ class LocklyManager:
         self._activity = activity
 
     @property
+    def hass(self) -> HomeAssistant:
+        """Return the HomeAssistant instance bound to this manager."""
+        return self._hass
+
+    @property
     def group_entity_id(self) -> str | None:
         """Return the configured lock group entity id."""
         data = self._entry.options or self._entry.data
