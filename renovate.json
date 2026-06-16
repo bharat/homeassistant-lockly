@@ -36,6 +36,14 @@
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "automerge": true,
       "platformAutomerge": true
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["home-assistant/actions"],
+      "minimumReleaseAge": "7 days",
+      "automerge": true,
+      "platformAutomerge": true,
+      "description": "home-assistant/actions is a first-party action tracked at @master (no stable release tag), so the default 14-day aging never completes (master commits more often than that) and leaves a perpetually blocked digest PR. Apply a shorter 7-day community-vetting buffer here so digest bumps adopt automatically and stay roughly current, while still not pulling a brand-new commit. PyPI packages and tag-pinned actions keep the default 14-day aging."
     }
   ]
 }
