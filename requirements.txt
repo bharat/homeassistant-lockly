@@ -1,6 +1,6 @@
 colorlog==6.10.1
 homeassistant==2026.5.2
-home-assistant-frontend==20260527.3
+home-assistant-frontend==20260527.4
 paho-mqtt==2.1.0
 pip==26.1.2
 pytest==9.0.3
