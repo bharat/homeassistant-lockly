@@ -5,7 +5,7 @@ paho-mqtt==2.1.0
 pip==26.1.2
 pytest==9.0.3
 pytest-homeassistant-custom-component==0.13.331
-ruff==0.15.15
+ruff==0.15.16
 pre_commit==4.6.0
 yq==3.4.3
 
@@ -18,8 +18,8 @@ yq==3.4.3
 # for PyTurboJPEG 1.x), so they should be bumped in lockstep with HA itself.
 PyTurboJPEG==2.2.0
 ha-ffmpeg==3.2.2
-hassil==3.5.0
+hassil==3.6.0
 home-assistant-intents==2026.6.1
 mutagen==1.47.0
 pymicro-vad==2.0.1
-pyspeex-noise==2.0.0
+pyspeex-noise==2.0.1
