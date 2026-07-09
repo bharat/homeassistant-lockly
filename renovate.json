@@ -27,6 +27,11 @@
       "description": "homeassistant is upgraded in lockstep with pytest-homeassistant-custom-component (see AGENTS.md fleet policy). Let helper bumps drive the HA upgrade rather than bumping homeassistant directly."
     },
     {
+      "matchDepNames": ["pytest"],
+      "enabled": false,
+      "description": "pytest is pinned exactly by pytest-homeassistant-custom-component, so an independent pytest bump makes pip resolution impossible (observed 2026-07: pytest 9.1.x vs phacc 0.13.341 pinning pytest==9.0.3). Let phacc bumps drive the pytest upgrade, mirroring the homeassistant lockstep rule above."
+    },
+    {
       "matchDepNames": ["pytest-homeassistant-custom-component"],
       "groupName": "homeassistant test helper",
       "dependencyDashboardApproval": true,
