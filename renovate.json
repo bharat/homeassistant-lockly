@@ -32,11 +32,6 @@
       "description": "pytest is pinned exactly by pytest-homeassistant-custom-component, so an independent pytest bump makes pip resolution impossible (observed 2026-07: pytest 9.1.x vs phacc 0.13.341 pinning pytest==9.0.3). Let phacc bumps drive the pytest upgrade, mirroring the homeassistant lockstep rule above."
     },
     {
-      "matchPackageNames": ["softprops/action-gh-release"],
-      "automerge": false,
-      "description": "Renovate cannot compute a reliable release age for digest bumps of this tag-tracked action (it auto-merged an hours-old release on a sibling repo). Leave these PRs open for a manual merge once the underlying release is 14 days old."
-    },
-    {
       "matchDepNames": ["pytest-homeassistant-custom-component"],
       "groupName": "homeassistant test helper",
       "dependencyDashboardApproval": true,
@@ -46,6 +41,12 @@
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "automerge": true,
       "platformAutomerge": true
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": false,
+      "description": "Renovate cannot compute a reliable release age for digest bumps of tag-tracked actions: it keyed aging off the old tag and auto-merged digests pointing at releases only hours old (action-gh-release v3.0.2, setup-node v6.5.0). Digest PRs stay open for a manual merge once the underlying release is 14 days old. Tag updates are unaffected; the home-assistant/actions rule below still applies last."
     },
     {
       "matchManagers": ["github-actions"],
