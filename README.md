@@ -4,8 +4,8 @@
 </h1>
 
 [![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
-[![Validate](https://github.com/bharat/homeassistant-lockly/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/bharat/homeassistant-lockly/actions/workflows/validate.yml)
-[![Lint](https://github.com/bharat/homeassistant-lockly/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/bharat/homeassistant-lockly/actions/workflows/lint.yml)
+[![Validate](https://github.com/bharat/homeassistant-lockly/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/bharat/homeassistant-lockly/actions/workflows/validate.yml?query=branch%3Amain)
+[![Lint](https://github.com/bharat/homeassistant-lockly/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/bharat/homeassistant-lockly/actions/workflows/lint.yml?query=branch%3Amain)
 [![Release](https://img.shields.io/github/v/release/bharat/homeassistant-lockly?sort=semver)](https://github.com/bharat/homeassistant-lockly/releases)
 
 Lockly is a Home Assistant integration and Lovelace card for managing PIN
