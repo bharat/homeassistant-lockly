@@ -9,6 +9,7 @@ select = [
 
 ignore = [
     "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
+    "CPY001", # Missing copyright notice (this project does not use per-file notices)
     "D203", # no-blank-line-before-class (incompatible with formatter)
     "D213", # multi-line-summary-second-line (incompatible with D212)
     "COM812", # incompatible with formatter
