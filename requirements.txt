@@ -5,7 +5,7 @@ paho-mqtt==2.1.0
 pip==26.2.1
 pytest==9.0.3
 pytest-homeassistant-custom-component==0.13.331
-ruff==0.16.2
+ruff==0.16.3
 pre_commit==4.6.2
 yq==4.1.2
 
