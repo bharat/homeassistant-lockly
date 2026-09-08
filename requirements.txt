@@ -19,7 +19,7 @@ yq==4.1.2
 PyTurboJPEG==2.5.0
 ha-ffmpeg==3.2.2
 hassil==3.11.0
-home-assistant-intents==2026.8.24
+home-assistant-intents==2026.8.25
 mutagen==1.48.1
 pymicro-vad==2.1.0
 pyspeex-noise==2.0.1
