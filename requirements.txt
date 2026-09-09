@@ -18,7 +18,7 @@ yq==4.1.2
 # for PyTurboJPEG 1.x), so they should be bumped in lockstep with HA itself.
 PyTurboJPEG==2.5.0
 ha-ffmpeg==3.2.2
-hassil==3.11.0
+hassil==3.12.0
 home-assistant-intents==2026.8.25
 mutagen==1.48.1
 pymicro-vad==2.1.0
