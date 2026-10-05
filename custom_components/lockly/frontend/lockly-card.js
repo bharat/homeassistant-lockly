@@ -37,6 +37,48 @@ function showDisabledPrefKey(entryId) {
   return `lockly:lockly-card:${entryId || "default"}:showDisabled`;
 }
 
+// HA 2026.9 (frontend 20260826.7) moved customElements.define("ha-input")
+// out of the always-loaded Lovelace bundle; it now ships only with the
+// card-editor chunk (alongside ha-form). A dashboard that shows nothing but
+// this card never loads that chunk, so <ha-input> tags built via innerHTML
+// stay inert unknown elements and never expose .value. Pull the chunk in by
+// asking a core card for its config element, then wait for the definition.
+// ha-textfield no longer exists in the bundle, so there is no fallback tag.
+const INPUT_ELEMENT_WAIT_MS = 5000;
+let inputElementsReady = null;
+
+async function ensureInputElements() {
+  if (customElements.get("ha-input")) {
+    return;
+  }
+  if (!inputElementsReady) {
+    inputElementsReady = (async () => {
+      try {
+        const helpers = await window.loadCardHelpers();
+        const card = helpers.createCardElement({ type: "entities", entities: [] });
+        await card.constructor.getConfigElement();
+        // Bound the wait so a future frontend reshuffle degrades the dialog
+        // instead of hanging it forever on a definition that never arrives.
+        await Promise.race([
+          customElements.whenDefined("ha-input"),
+          new Promise((resolve) => setTimeout(resolve, INPUT_ELEMENT_WAIT_MS)),
+        ]);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("Lockly card: could not load the ha-input element", err);
+      }
+      if (!customElements.get("ha-input")) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "Lockly card: <ha-input> is still not registered after loading the " +
+            "card editor chunk; text fields will render empty"
+        );
+      }
+    })();
+  }
+  await inputElementsReady;
+}
+
 class LocklyCard extends HTMLElement {
   setConfig(config) {
     this._config = { ...config };
@@ -612,10 +654,14 @@ class LocklyCard extends HTMLElement {
     enabledField?.addEventListener("change", refresh);
   }
 
-  _openEditor(slot) {
+  async _openEditor(slot) {
     if (!this._canEdit) {
       return;
     }
+    // The dialog's Name/PIN fields are <ha-input>; build the markup only
+    // once the element is registered or they stay inert and Save never
+    // enables (see ensureInputElements).
+    await ensureInputElements();
     this._ensureDialog();
     this._editingSlotId = slot.id;
     this._originalSlot = {
@@ -940,12 +986,15 @@ class LocklyCardEditor extends HTMLElement {
     );
   }
 
-  _render() {
+  async _render() {
     if (!this._hass) {
       return;
     }
     this._needsRender = false;
     this._rendered = true;
+    // The editor's title field is an <ha-input>; make sure it is registered
+    // before the markup is built (see ensureInputElements).
+    await ensureInputElements();
     const entries = this._entries || [];
     const selected = this._config?.entry_id || "";
     const title = this._config?.title || "";
