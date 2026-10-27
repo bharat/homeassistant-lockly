@@ -6,7 +6,7 @@ pip==26.2.1
 pytest==9.0.3
 pytest-homeassistant-custom-component==0.13.371
 ruff==0.17.0
-pre_commit==4.6.2
+pre_commit==4.7.0
 yq==4.4.5
 
 # HA's helpers/service.py:_base_components() eagerly imports a hardcoded set of
