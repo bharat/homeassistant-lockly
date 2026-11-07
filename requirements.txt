@@ -16,7 +16,7 @@ yq==4.4.5
 # Pins match HA's per-integration manifest.json values — these are chosen
 # for compatibility with the system libs HA assumes (e.g. libjpeg-turbo 2.x
 # for PyTurboJPEG 1.x), so they should be bumped in lockstep with HA itself.
-PyTurboJPEG==2.6.0
+PyTurboJPEG==2.6.1
 ha-ffmpeg==3.2.2
 hassil==3.12.1
 home-assistant-intents==2026.10.6
