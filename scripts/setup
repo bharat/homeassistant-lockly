@@ -4,14 +4,14 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-sudo apt update && sudo apt install -y gh nodejs npm
+sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg libpcap-dev libturbojpeg0 mosquitto mosquitto-clients
+
+sudo apt-get install -y -qq --no-install-recommends nodejs npm
 
 python3 -m pip install --upgrade pip -r requirements.txt
 sudo npm install -g concurrently
-curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo BINDIR=/usr/local/bin bash
 pre-commit install
 
-curl -fsSL https://claude.ai/install.sh | bash
 
 # Disable xterm focus-reporting on shell startup. Some TUIs (notably tmux on
 # the host) leave it enabled, leaking ^[[O / ^[[I sequences into the prompt

@@ -1,6 +1,6 @@
 {
   "name": "bharat/homeassistant-lockly",
-  "image": "mcr.microsoft.com/devcontainers/python:3.14",
+  "image": "mcr.microsoft.com/devcontainers/python@sha256:2e0589f0725c951ac8ae0d7169784a9694f5818ec5264ed5231f23c6bf0ab7be",
   "postCreateCommand": "scripts/setup",
   "forwardPorts": [
     8123
@@ -44,18 +44,12 @@
   },
   "remoteUser": "vscode",
   "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
-      "moby": false
-    },
-    "ghcr.io/devcontainers/features/node:2": {},
-    "ghcr.io/devcontainers-extra/features/apt-packages:1": {
-      "packages": "gh,ffmpeg,libpcap-dev,libturbojpeg0,mosquitto,mosquitto-clients"
-    }
+    "ghcr.io/devcontainers/features/node:2": {}
   },
-  "mounts": [
-    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
-    "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind",
-    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind",
-    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind"
-  ]
+  "containerEnv": {
+    "GIT_AUTHOR_NAME": "Bharat Mediratta",
+    "GIT_AUTHOR_EMAIL": "bharat@menalto.com",
+    "GIT_COMMITTER_NAME": "Bharat Mediratta",
+    "GIT_COMMITTER_EMAIL": "bharat@menalto.com"
+  }
 }
