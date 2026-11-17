@@ -23,7 +23,7 @@ def _resolve_version() -> str:
 
     `manifest.json` is checked in with ``"version": "0.0.0"`` as a sentinel for
     "unreleased source." The release workflow (.github/workflows/release.yml,
-    step "Adjust version number") rewrites it to the actual tag via ``yq``
+    step "Build release zip") rewrites it to the actual tag via ``yq``
     before zipping the integration, so HACS installs see the real version.
     JSON has no comment syntax, so this rationale lives here.
 
