@@ -116,7 +116,14 @@ act -W .github/workflows/tests.yml
 
 Tags use **CalVer**: `v<YYYY>.<M>.<DD>` (e.g. `v2026.5.13`). Release titles use `Lockly v<YYYY>.<M>.<DD>` (e.g. `Lockly v2026.5.13`). Matches the fleet-wide HA-integration convention (triad-ams set the canonical shape). **Historical SemVer tags (`v1.0.x`) remain as-is** — the CalVer convention only applies going forward.
 
-The release workflow (`.github/workflows/release.yml`) fires on **release published** (not on tag push). It rewrites `manifest.json` version to the tag via `yq`, zips `custom_components/lockly`, and uploads the zip as a release asset.
+The release workflow (`.github/workflows/release.yml`) fires only on a **push of a `v*` tag**. There is no manual trigger. It has two jobs:
+
+- `build` (read-only token) checks out the tag, validates the tag format, verifies that the tagged commit is on `main`, refuses symlinks in `custom_components/lockly`, rewrites `manifest.json` version to the tag via `yq`, zips `custom_components/lockly` into `lockly.zip`, and writes `lockly.zip.sha256`.
+- `publish` (`contents: write` only) downloads that build, verifies the checksum, creates the release as a draft titled `Lockly <tag>` with generated notes (or reuses a release that already exists for the tag), attaches `lockly.zip` and `lockly.zip.sha256`, then publishes it.
+
+To cut a release, push the tag (`git tag v<YYYY>.<M>.<DD> <commit on main> && git push origin v<YYYY>.<M>.<DD>`), then edit the release body into the shape below once the workflow finishes.
+
+**Releases are immutable.** They are built only from tags that point at commits on `main`, and assets are never replaced: the upload refuses to overwrite an existing file, so re-running the workflow against a finished release fails. A bad release is fixed by pushing a new tag (for a same-day fix, `v<YYYY>.<M>.<DD>.<N>`), never by re-uploading or moving a tag.
 
 Build the GitHub release body in three parts:
 

@@ -1,35 +1,146 @@
 name: "Release"
 
+# Builds lockly.zip for a v* tag and publishes it with the GitHub release.
+#
+# Two jobs, so the token that can write releases never sits next to the
+# build: `build` checks out the tag read-only, verifies it and builds the
+# zip; `publish` only downloads that artifact and attaches it.
+# Releases are immutable: assets are never replaced. A bad release is fixed
+# by tagging a new version.
+
 on:
-  release:
-    types:
-      - "published"
+  push:
+    tags:
+      - "v*"
 
 permissions: {}
 
+concurrency:
+  group: "release-${{ github.ref }}"
+  cancel-in-progress: false
+
 jobs:
-  release:
-    name: "Release"
+  build:
+    name: "Build release zip"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - name: "Determine tag"
+        id: "vars"
+        shell: "bash"
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          if ! [[ "$TAG" == v* && "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Tag $TAG is not a vYYYY.M.D[.N] version" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # Fully qualified ref: an unqualified name would resolve a branch of
+      # the same name before the tag.
+      - name: "Checkout tag"
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7
+        with:
+          ref: refs/tags/${{ steps.vars.outputs.tag }}
+          persist-credentials: false
+
+      - name: "Verify the tag"
+        shell: "bash"
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          head=$(git rev-parse HEAD)
+          tagged=$(git rev-parse "refs/tags/${TAG}^{commit}")
+          pushed=$(git rev-parse "${GITHUB_SHA}^{commit}")
+          if [[ "$head" != "$tagged" || "$head" != "$pushed" ]]; then
+            echo "Checked out $head, but $TAG is $tagged and the push was $pushed" >&2
+            exit 1
+          fi
+          # Only commits already on main are released. The checkout is
+          # shallow; unshallow while fetching main so the ancestry walk
+          # never stops at a missing parent.
+          git fetch --no-tags --unshallow origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$head" origin/main; then
+            echo "$TAG ($head) is not on main" >&2
+            exit 1
+          fi
+          # A symlink in the integration folder could pull files from
+          # outside the repo into the public zip.
+          links=$(find custom_components/lockly -type l)
+          if [[ -n "$links" ]]; then
+            echo "Symlinks are not allowed in the release:" >&2
+            echo "$links" >&2
+            exit 1
+          fi
+
+      # The source tree keeps manifest.json at "0.0.0"; the zip gets the tag
+      # name as its version so Home Assistant's integration page shows it.
+      - name: "Build release zip"
+        shell: "bash"
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          src=custom_components/lockly
+          yq -i -o json '.version = strenv(TAG)' "$src/manifest.json"
+          mkdir -p dist
+          (cd "$src" && zip -r -y -q "$GITHUB_WORKSPACE/dist/lockly.zip" .)
+          unzip -p dist/lockly.zip manifest.json | jq -e --arg v "$TAG" '.version == $v'
+          unzip -l dist/lockly.zip
+          (cd dist && sha256sum lockly.zip > lockly.zip.sha256)
+          cat dist/lockly.zip.sha256
+
+      - name: "Upload build"
+        uses: "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" # v7.0.2
+        with:
+          name: "release-dist"
+          path: "dist/"
+          if-no-files-found: "error"
+          retention-days: 7
+
+  publish:
+    name: "Publish release"
+    needs: "build"
     runs-on: "ubuntu-latest"
     permissions:
       contents: write
     steps:
-      - name: "Checkout the repository"
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7
-
-      - name: "Adjust version number"
-        shell: "bash"
-        run: |
-          yq -i -o json '.version="${{ github.event.release.tag_name }}"' \
-            "${{ github.workspace }}/custom_components/lockly/manifest.json"
-
-      - name: "ZIP the integration directory"
-        shell: "bash"
-        run: |
-          cd "${{ github.workspace }}/custom_components/lockly"
-          zip lockly.zip -r ./
-
-      - name: "Upload the ZIP file to the release"
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      - name: "Download build"
+        uses: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333" # v8.0.2
         with:
-          files: ${{ github.workspace }}/custom_components/lockly/lockly.zip
+          name: "release-dist"
+          path: "dist"
+
+      - name: "Verify checksum"
+        shell: "bash"
+        working-directory: "dist"
+        run: sha256sum -c lockly.zip.sha256
+
+      # Created as a draft so it never appears without its zip, then
+      # published. A release that already exists (one created by hand with
+      # its notes) is reused. Assets are uploaded without --clobber, so an
+      # existing zip is never replaced and a rerun against a finished
+      # release fails instead.
+      - name: "Publish release"
+        shell: "bash"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists; attaching to it"
+          else
+            gh release create "$TAG" --verify-tag --draft --generate-notes \
+              --title "Lockly $TAG"
+          fi
+          gh release upload "$TAG" dist/lockly.zip dist/lockly.zip.sha256
+          gh release edit "$TAG" --draft=false
