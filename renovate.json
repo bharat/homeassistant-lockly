@@ -32,6 +32,11 @@
       "description": "pytest is pinned exactly by pytest-homeassistant-custom-component, so an independent pytest bump makes pip resolution impossible (observed 2026-07: pytest 9.1.x vs phacc 0.13.341 pinning pytest==9.0.3). Let phacc bumps drive the pytest upgrade, mirroring the homeassistant lockstep rule above."
     },
     {
+      "matchDepNames": ["paho-mqtt"],
+      "enabled": false,
+      "description": "paho-mqtt is pinned exactly by pytest-homeassistant-custom-component, so an independent bump makes pip resolution impossible (observed 2026-11: paho-mqtt 2.2.0 vs phacc 0.13.371 pinning paho-mqtt==2.1.0). Let phacc bumps drive the paho-mqtt upgrade, like the pytest rule above."
+    },
+    {
       "matchDepNames": ["pytest-homeassistant-custom-component"],
       "groupName": "homeassistant test helper",
       "dependencyDashboardApproval": true,
